@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>ESC Discord Instagram Template Editor</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            overflow-x: hidden;
+        }
+        .canvas-container {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        .draggable {
+            cursor: move;
+        }
+        .text-element {
+            position: absolute;
+            cursor: move;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .selected {
+            outline: 2px dashed #3b82f6;
+            outline-offset: 4px;
+        }
+        @media (max-width: 1023px) {
+            .mobile-panel {
+                max-height: 70vh;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .controls-section {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                background: white;
+                border-top: 1px solid #e5e7eb;
+                z-index: 50;
+                max-height: 60vh;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            .canvas-wrapper {
+                padding-bottom: 60vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        const ASPECT_RATIOS = {
+            '4:5': { width: 1080, height: 1350, label: '4:5 (Post)' },
+            '1:1': { width: 1080, height: 1080, label: '1:1 (Square)' },
+            '16:9': { width: 1920, height: 1080, label: '16:9 (Landscape)' },
+            '9:16': { width: 1080, height: 1920, label: '9:16 (Story)' }
+        };
+
+        function InstagramTemplateEditor() {
+            const [aspectRatio, setAspectRatio] = useState('4:5');
+            const [baseImage, setBaseImage] = useState(null);
+            const [permanentOverlays, setPermanentOverlays] = useState({
+                '4:5': null,
+                '1:1': null,
+                '16:9': null,
+                '9:16': null
+            });
+            const [additionalOverlays, setAdditionalOverlays] = useState({
+                'regular-4:5': null,
+                'regular-1:1': null,
+                'regular-16:9': null,
+                'regular-9:16': null,
+                'breaking-4:5': null,
+                'breaking-1:1': null,
+                'breaking-16:9': null,
+                'breaking-9:16': null
+            });
+            const [selectedOverlay, setSelectedOverlay] = useState('regular');
+            const [textElements, setTextElements] = useState([]);
+            const [selectedText, setSelectedText] = useState(null);
+            const [imageScale, setImageScale] = useState(1);
+            const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+            const [isDragging, setIsDragging] = useState(false);
+            const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+            const [showMobileControls, setShowMobileControls] = useState(false);
+            const [activeTab, setActiveTab] = useState('image');
+            
+            const canvasRef = useRef(null);
+            const containerRef = useRef(null);
+
+            // Predefined file paths for permanent overlays
+            const PERMANENT_OVERLAY_PATHS = {
+                '4:5': './overlays/overlay-4-5.png',
+                '1:1': './overlays/overlay-1-1.png',
+                '16:9': './overlays/overlay-16-9.png',
+                '9:16': './overlays/overlay-9-16.png'
+            };
+
+            // Predefined file paths for additional overlays (one for each aspect ratio)
+            const ADDITIONAL_OVERLAY_PATHS = {
+                'regular-4:5': './overlays/regular-overlay-4-5.png',
+                'regular-1:1': './overlays/regular-overlay-1-1.png',
+                'regular-16:9': './overlays/regular-overlay-16-9.png',
+                'regular-9:16': './overlays/regular-overlay-9-16.png',
+                'breaking-4:5': './overlays/breaking-overlay-4-5.png',
+                'breaking-1:1': './overlays/breaking-overlay-1-1.png',
+                'breaking-16:9': './overlays/breaking-overlay-16-9.png',
+                'breaking-9:16': './overlays/breaking-overlay-9-16.png'
+            };
+
+            const dimensions = ASPECT_RATIOS[aspectRatio];
+            const maxCanvasWidth = typeof window !== 'undefined' ? Math.min(600, window.innerWidth - 40) : 600;
+            const scale = maxCanvasWidth / dimensions.width;
+            const canvasHeight = dimensions.height * scale;
+
+            // Load permanent overlays from predefined paths on mount
+            useEffect(() => {
+                // Load permanent overlays
+                Object.entries(PERMANENT_OVERLAY_PATHS).forEach(([ratio, path]) => {
+                    fetch(path)
+                        .then(response => response.blob())
+                        .then(blob => {
+                            const reader = new FileReader();
+                            reader.onload = (e) => {
+                                const img = new Image();
+                                img.onload = () => {
+                                    console.log(`Loaded permanent overlay for ${ratio}`);
+                                    setPermanentOverlays(prev => ({
+                                        ...prev,
+                                        [ratio]: img
+                                    }));
+                                };
+                                img.src = e.target.result;
+                            };
+                            reader.readAsDataURL(blob);
+                        })
+                        .catch(e => {
+                            console.error(`Failed to load permanent overlay for ${ratio} from ${path}`, e);
+                        });
+                });
+
+                // Load additional overlays
+                Object.entries(ADDITIONAL_OVERLAY_PATHS).forEach(([type, path]) => {
+                    fetch(path)
+                        .then(response => response.blob())
+                        .then(blob => {
+                            const reader = new FileReader();
+                            reader.onload = (e) => {
+                                const img = new Image();
+                                img.onload = () => {
+                                    console.log(`Loaded additional overlay for ${type}`);
+                                    setAdditionalOverlays(prev => ({
+                                        ...prev,
+                                        [type]: img
+                                    }));
+                                };
+                                img.src = e.target.result;
+                            };
+                            reader.readAsDataURL(blob);
+                        })
+                        .catch(e => {
+                            console.error(`Failed to load additional overlay for ${type} from ${path}`, e);
+                        });
+                });
+            }, []);
+
+            const handleBaseImageUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            setBaseImage(img);
+                            setImageScale(1);
+                            setImagePosition({ x: 0, y: 0 });
+                        };
+                        img.src = event.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const addText = () => {
+                const yPosition = selectedOverlay === 'regular' 
+                    ? dimensions.height - 210 
+                    : dimensions.height - 240;
+                
+                setTextElements(prev => [...prev, {
+                    id: Date.now(),
+                    text: 'Double click to edit',
+                    x: dimensions.width / 2,
+                    y: yPosition,
+                    fontSize: 40,
+                    color: '#ffffff',
+                    fontFamily: 'Helvetica Neue',
+                    fontWeight: 'bold',
+                    textAlign: 'center',
+                    maxWidth: dimensions.width - 100
+                }]);
+            };
+
+            const updateTextElement = (id, updates) => {
+                setTextElements(prev => prev.map(el => 
+                    el.id === id ? { ...el, ...updates } : el
+                ));
+            };
+
+            const deleteTextElement = (id) => {
+                setTextElements(prev => prev.filter(el => el.id !== id));
+                if (selectedText === id) setSelectedText(null);
+            };
+
+            const handleImageDragStart = (e) => {
+                e.preventDefault();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                setIsDragging(true);
+                setDragStart({ x: clientX - imagePosition.x, y: clientY - imagePosition.y });
+            };
+
+            const handleImageDragMove = (e) => {
+                if (!isDragging) return;
+                e.preventDefault();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                setImagePosition({
+                    x: clientX - dragStart.x,
+                    y: clientY - dragStart.y
+                });
+            };
+
+            const handleImageDragEnd = () => {
+                setIsDragging(false);
+            };
+
+            useEffect(() => {
+                if (isDragging) {
+                    window.addEventListener('mousemove', handleImageDragMove);
+                    window.addEventListener('mouseup', handleImageDragEnd);
+                    window.addEventListener('touchmove', handleImageDragMove);
+                    window.addEventListener('touchend', handleImageDragEnd);
+                    return () => {
+                        window.removeEventListener('mousemove', handleImageDragMove);
+                        window.removeEventListener('mouseup', handleImageDragEnd);
+                        window.removeEventListener('touchmove', handleImageDragMove);
+                        window.removeEventListener('touchend', handleImageDragEnd);
+                    };
+                }
+            }, [isDragging, dragStart]);
+
+            const renderCanvas = () => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, dimensions.width, dimensions.height);
+
+                // Draw base image
+                if (baseImage) {
+                    ctx.save();
+                    const imgScale = imageScale;
+                    const imgX = imagePosition.x / scale;
+                    const imgY = imagePosition.y / scale;
+                    
+                    ctx.translate(dimensions.width / 2, dimensions.height / 2);
+                    ctx.scale(imgScale, imgScale);
+                    ctx.translate(-dimensions.width / 2 + imgX / imgScale, -dimensions.height / 2 + imgY / imgScale);
+                    
+                    const imgAspect = baseImage.width / baseImage.height;
+                    const canvasAspect = dimensions.width / dimensions.height;
+                    
+                    let drawWidth = dimensions.width;
+                    let drawHeight = dimensions.height;
+                    let offsetX = 0;
+                    let offsetY = 0;
+                    
+                    if (imgAspect > canvasAspect) {
+                        drawWidth = dimensions.height * imgAspect;
+                        offsetX = -(drawWidth - dimensions.width) / 2;
+                    } else {
+                        drawHeight = dimensions.width / imgAspect;
+                        offsetY = -(drawHeight - dimensions.height) / 2;
+                    }
+                    
+                    ctx.drawImage(baseImage, offsetX, offsetY, drawWidth, drawHeight);
+                    ctx.restore();
+                }
+
+                // Draw selected additional overlay for current aspect ratio
+                const overlayKey = `${selectedOverlay}-${aspectRatio}`;
+                const currentAdditionalOverlay = additionalOverlays[overlayKey];
+                if (currentAdditionalOverlay) {
+                    ctx.drawImage(currentAdditionalOverlay, 0, 0, dimensions.width, dimensions.height);
+                }
+
+                // Draw permanent overlay for current aspect ratio (always on top)
+                const currentPermanentOverlay = permanentOverlays[aspectRatio];
+                if (currentPermanentOverlay) {
+                    ctx.drawImage(currentPermanentOverlay, 0, 0, dimensions.width, dimensions.height);
+                }
+
+                // Draw text elements
+                textElements.forEach(el => {
+                    ctx.font = `${el.fontWeight} ${el.fontSize}px ${el.fontFamily}`;
+                    ctx.fillStyle = el.color;
+                    ctx.textBaseline = 'top';
+                    
+                    const maxWidth = el.maxWidth || dimensions.width - 100;
+                    const lineHeight = el.fontSize * 1.2;
+                    
+                    // Word wrap function
+                    const wrapText = (text, maxWidth) => {
+                        // First split by manual line breaks
+                        const paragraphs = text.split('\n');
+                        const allLines = [];
+                        
+                        paragraphs.forEach(paragraph => {
+                            const words = paragraph.split(' ');
+                            let currentLine = '';
+                            
+                            words.forEach(word => {
+                                const testLine = currentLine + (currentLine ? ' ' : '') + word;
+                                const metrics = ctx.measureText(testLine);
+                                
+                                if (metrics.width > maxWidth && currentLine !== '') {
+                                    allLines.push(currentLine);
+                                    currentLine = word;
+                                } else {
+                                    currentLine = testLine;
+                                }
+                            });
+                            
+                            if (currentLine) {
+                                allLines.push(currentLine);
+                            }
+                        });
+                        
+                        return allLines;
+                    };
+                    
+                    const lines = wrapText(el.text, maxWidth);
+                    
+                    lines.forEach((line, i) => {
+                        if (el.textAlign === 'center') {
+                            ctx.textAlign = 'center';
+                            ctx.fillText(line, el.x, el.y + (i * lineHeight));
+                        } else {
+                            ctx.textAlign = 'left';
+                            ctx.fillText(line, el.x, el.y + (i * lineHeight));
+                        }
+                    });
+                });
+            };
+
+            useEffect(() => {
+                renderCanvas();
+            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, aspectRatio, additionalOverlays]);
+
+            // Reposition text elements when aspect ratio changes
+            useEffect(() => {
+                setTextElements(prev => prev.map(el => {
+                    const yPosition = selectedOverlay === 'regular' 
+                        ? dimensions.height - 210 
+                        : dimensions.height - 240;
+                    
+                    return {
+                        ...el,
+                        x: dimensions.width / 2,
+                        y: yPosition,
+                        maxWidth: dimensions.width - 100
+                    };
+                }));
+            }, [aspectRatio, selectedOverlay]);
+
+            const exportImage = () => {
+                const canvas = canvasRef.current;
+                if (!canvas) {
+                    alert('Canvas not ready. Please try again.');
+                    return;
+                }
+
+                try {
+                    // Convert canvas to data URL
+                    const dataUrl = canvas.toDataURL('image/png');
+                    
+                    // Create download link
+                    const link = document.createElement('a');
+                    link.download = `esc-instagram-${aspectRatio}-${Date.now()}.png`;
+                    link.href = dataUrl;
+                    
+                    // Trigger download
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                } catch (error) {
+                    console.error('Export error:', error);
+                    alert('Failed to export image. Error: ' + error.message);
+                }
+            };
+
+            const copyImage = async () => {
+                const canvas = canvasRef.current;
+                if (!canvas) {
+                    alert('Canvas not ready. Please try again.');
+                    return;
+                }
+
+                try {
+                    // Check if Clipboard API is available
+                    if (navigator.clipboard && window.ClipboardItem) {
+                        // Get blob from canvas
+                        const blob = await new Promise((resolve, reject) => {
+                            canvas.toBlob((blob) => {
+                                if (blob) {
+                                    resolve(blob);
+                                } else {
+                                    reject(new Error('Failed to create blob from canvas'));
+                                }
+                            }, 'image/png', 1.0);
+                        });
+
+                        // Copy to clipboard
+                        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                        alert('Image copied to clipboard!');
+                    } else {
+                        // Fallback: download the image if clipboard API not available
+                        const dataUrl = canvas.toDataURL('image/png');
+                        const link = document.createElement('a');
+                        link.download = `esc-instagram-${aspectRatio}-${Date.now()}.png`;
+                        link.href = dataUrl;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        alert('Clipboard API not supported. Image downloaded instead.');
+                    }
+                } catch (error) {
+                    console.error('Copy error:', error);
+                    alert('Failed to copy image. Error: ' + error.message);
+                }
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    <div className="max-w-7xl mx-auto">
+                        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 p-4">ESC Discord Instagram Template Editor</h1>
+                        
+                        <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:px-4">
+                            {/* Canvas - Always visible */}
+                            <div className="lg:col-span-2 canvas-wrapper">
+                                <div className="bg-white rounded-lg shadow-lg p-2 md:p-4 mx-2 md:mx-0">
+                                    <div className="mb-3 flex flex-wrap gap-1 md:gap-2">
+                                        {Object.entries(ASPECT_RATIOS).map(([key, value]) => (
+                                            <button
+                                                key={key}
+                                                onClick={() => setAspectRatio(key)}
+                                                className={`px-2 md:px-4 py-1.5 md:py-2 rounded-lg text-sm md:text-base font-medium transition ${
+                                                    aspectRatio === key
+                                                        ? 'bg-blue-600 text-white'
+                                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                {value.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    
+                                    <div 
+                                        ref={containerRef}
+                                        className="canvas-container relative mx-auto bg-gray-100 rounded-lg overflow-hidden"
+                                        style={{ 
+                                            width: maxCanvasWidth, 
+                                            height: canvasHeight,
+                                            cursor: isDragging ? 'grabbing' : 'grab'
+                                        }}
+                                        onMouseDown={handleImageDragStart}
+                                        onTouchStart={handleImageDragStart}
+                                    >
+                                        <canvas
+                                            ref={canvasRef}
+                                            width={dimensions.width}
+                                            height={dimensions.height}
+                                            style={{
+                                                width: '100%',
+                                                height: '100%'
+                                            }}
+                                        />
+                                    </div>
+
+                                    {baseImage && (
+                                        <div className="mt-3 md:mt-4">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="block text-xs md:text-sm font-medium text-gray-700">
+                                                    Image Zoom: {imageScale.toFixed(2)}x
+                                                </label>
+                                                <button
+                                                    onClick={() => {
+                                                        setImageScale(1);
+                                                        setImagePosition({ x: 0, y: 0 });
+                                                    }}
+                                                    className="text-xs md:text-sm text-blue-600 hover:text-blue-700 font-medium"
+                                                >
+                                                    Reset Position
+                                                </button>
+                                            </div>
+                                            <input
+                                                type="range"
+                                                min="0.5"
+                                                max="3"
+                                                step="0.1"
+                                                value={imageScale}
+                                                onChange={(e) => setImageScale(parseFloat(e.target.value))}
+                                                className="w-full"
+                                            />
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-2 mt-3 md:mt-4">
+                                        <button
+                                            onClick={copyImage}
+                                            className="bg-blue-600 text-white px-3 md:px-6 py-2 md:py-3 rounded-lg text-sm md:text-base font-semibold hover:bg-blue-700 transition"
+                                        >
+                                            Copy
+                                        </button>
+                                        <button
+                                            onClick={exportImage}
+                                            className="bg-green-600 text-white px-3 md:px-6 py-2 md:py-3 rounded-lg text-sm md:text-base font-semibold hover:bg-green-700 transition"
+                                        >
+                                            Export as PNG
+                                        </button>
+                                    </div>
+
+                                    {/* Mobile Controls Toggle */}
+                                    <button
+                                        onClick={() => setShowMobileControls(!showMobileControls)}
+                                        className="lg:hidden w-full mt-3 bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+                                    >
+                                        {showMobileControls ? 'Hide' : 'Show'} Controls
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Controls - Desktop sidebar / Mobile bottom panel */}
+                            <div className={`${showMobileControls ? 'block' : 'hidden'} lg:block controls-section`}>
+                                {/* Mobile Tabs */}
+                                <div className="lg:hidden flex border-b border-gray-200 bg-white sticky top-0 z-10">
+                                    <button
+                                        onClick={() => setActiveTab('image')}
+                                        className={`flex-1 py-3 text-sm font-medium ${activeTab === 'image' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
+                                    >
+                                        Image
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('overlays')}
+                                        className={`flex-1 py-3 text-sm font-medium ${activeTab === 'overlays' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
+                                    >
+                                        Overlays
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('text')}
+                                        className={`flex-1 py-3 text-sm font-medium ${activeTab === 'text' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
+                                    >
+                                        Text
+                                    </button>
+                                </div>
+
+                                <div className="space-y-4 p-2 md:p-0 mobile-panel">
+                                    {/* Base Image - Desktop: always show, Mobile: show in 'image' tab */}
+                                    <div className={`${activeTab === 'image' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-3 md:p-4`}>
+                                        <h2 className="text-base md:text-lg font-semibold mb-3">Base Image</h2>
+                                        <label className="block">
+                                            <span className="sr-only">Choose base image</span>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={handleBaseImageUpload}
+                                                className="block w-full text-xs md:text-sm text-gray-500 file:mr-2 md:file:mr-4 file:py-1.5 md:file:py-2 file:px-3 md:file:px-4 file:rounded-full file:border-0 file:text-xs md:file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                            />
+                                        </label>
+                                    </div>
+
+                                    {/* Additional Overlays - Desktop: always show, Mobile: show in 'overlays' tab */}
+                                    <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-3 md:p-4`}>
+                                        <h2 className="text-base md:text-lg font-semibold mb-3">Overlay Type</h2>
+                                        <div className="space-y-3">
+                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                                                <input
+                                                    type="radio"
+                                                    name="overlayType"
+                                                    value="regular"
+                                                    checked={selectedOverlay === 'regular'}
+                                                    onChange={(e) => setSelectedOverlay(e.target.value)}
+                                                    className="w-5 h-5 text-blue-600"
+                                                />
+                                                <span className="text-sm md:text-base font-medium text-gray-700">Regular</span>
+                                            </label>
+                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                                                <input
+                                                    type="radio"
+                                                    name="overlayType"
+                                                    value="breaking"
+                                                    checked={selectedOverlay === 'breaking'}
+                                                    onChange={(e) => setSelectedOverlay(e.target.value)}
+                                                    className="w-5 h-5 text-blue-600"
+                                                />
+                                                <span className="text-sm md:text-base font-medium text-gray-700">Breaking</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* Text Controls - Desktop: always show, Mobile: show in 'text' tab */}
+                                    <div className={`${activeTab === 'text' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-3 md:p-4`}>
+                                        <h2 className="text-base md:text-lg font-semibold mb-3">Text</h2>
+                                        <button
+                                            onClick={addText}
+                                            className="w-full bg-blue-600 text-white px-3 md:px-4 py-2 rounded-lg text-sm md:text-base font-medium hover:bg-blue-700 transition mb-3"
+                                        >
+                                            Add Text
+                                        </button>
+                                        
+                                        <div className="space-y-3 max-h-96 overflow-y-auto">
+                                            {textElements.map(el => (
+                                                <div key={el.id} className="border border-gray-200 rounded-lg p-2 md:p-3">
+                                                    <textarea
+                                                        value={el.text}
+                                                        onChange={(e) => updateTextElement(el.id, { text: e.target.value })}
+                                                        className="w-full p-2 border border-gray-300 rounded mb-2 text-xs md:text-sm"
+                                                        rows="2"
+                                                    />
+                                                    <div className="grid grid-cols-2 gap-2 mb-2">
+                                                        <div>
+                                                            <label className="text-xs text-gray-600">Size</label>
+                                                            <input
+                                                                type="number"
+                                                                value={el.fontSize}
+                                                                onChange={(e) => updateTextElement(el.id, { fontSize: parseInt(e.target.value) })}
+                                                                className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-xs text-gray-600">Color</label>
+                                                            <input
+                                                                type="color"
+                                                                value={el.color}
+                                                                onChange={(e) => updateTextElement(el.id, { color: e.target.value })}
+                                                                className="w-full h-8 border border-gray-300 rounded"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <select
+                                                        value={el.fontFamily}
+                                                        onChange={(e) => updateTextElement(el.id, { fontFamily: e.target.value })}
+                                                        className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm mb-2"
+                                                    >
+                                                        <option value="Helvetica Neue">Helvetica Neue</option>
+                                                        <option value="Arial">Arial</option>
+                                                        <option value="Helvetica">Helvetica</option>
+                                                        <option value="Georgia">Georgia</option>
+                                                        <option value="Times New Roman">Times New Roman</option>
+                                                        <option value="Courier New">Courier New</option>
+                                                        <option value="Verdana">Verdana</option>
+                                                        <option value="Impact">Impact</option>
+                                                    </select>
+                                                    <button
+                                                        onClick={() => deleteTextElement(el.id)}
+                                                        className="w-full bg-red-500 text-white px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm hover:bg-red-600 transition"
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<InstagramTemplateEditor />, document.getElementById('root'));
+    </script>
+</body>
+</html>
