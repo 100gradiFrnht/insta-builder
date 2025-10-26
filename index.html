@@ -87,9 +87,10 @@
             const [selectedText, setSelectedText] = useState(null);
             const [imageScale, setImageScale] = useState(1);
             const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
+            const [imageRotation, setImageRotation] = useState(0);
             const [isDragging, setIsDragging] = useState(false);
             const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-            const [showMobileControls, setShowMobileControls] = useState(false);
+            const [showMobileControls, setShowMobileControls] = useState(true);
             const [activeTab, setActiveTab] = useState('image');
             const [showSafeMargins, setShowSafeMargins] = useState(false);
             const [lastTouchDistance, setLastTouchDistance] = useState(null);
@@ -230,40 +231,54 @@
             };
 
             const handleImageDragStart = (e) => {
-                // Handle pinch zoom
+                // Handle pinch zoom - detect two fingers
                 if (e.touches && e.touches.length === 2) {
                     e.preventDefault();
                     const distance = getTouchDistance(e.touches);
                     setLastTouchDistance(distance);
+                    setIsDragging(false); // Don't drag when pinching
                     return;
                 }
 
-                // Handle single touch/mouse drag
+                // Handle single touch/mouse drag only if not already pinching
+                if (e.touches && e.touches.length > 2) return;
+
                 e.preventDefault();
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 setIsDragging(true);
                 setDragStart({ x: clientX - imagePosition.x, y: clientY - imagePosition.y });
+                setLastTouchDistance(null); // Reset pinch state
             };
 
             const handleImageDragMove = (e) => {
-                // Handle pinch zoom
+                // Handle pinch zoom - two fingers
                 if (e.touches && e.touches.length === 2) {
                     e.preventDefault();
                     const distance = getTouchDistance(e.touches);
 
-                    if (lastTouchDistance) {
-                        const scale = distance / lastTouchDistance;
-                        const newScale = Math.max(0.5, Math.min(3, imageScale * scale));
-                        setImageScale(newScale);
+                    if (lastTouchDistance && lastTouchDistance > 0) {
+                        // Calculate scale change
+                        const ratio = distance / lastTouchDistance;
+
+                        // Apply gentle smoothing
+                        const smoothRatio = 1 + (ratio - 1) * 0.8;
+
+                        const newScale = imageScale * smoothRatio;
+                        const clampedScale = Math.max(0.5, Math.min(3, newScale));
+
+                        setImageScale(clampedScale);
                     }
 
                     setLastTouchDistance(distance);
+
+                    setIsDragging(false); // Ensure dragging is off while pinching
                     return;
                 }
 
                 // Handle single touch/mouse drag
-                if (!isDragging) return;
+                if (!isDragging || (e.touches && e.touches.length !== 1)) return;
+
                 e.preventDefault();
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -273,16 +288,23 @@
                 });
             };
 
-            const handleImageDragEnd = () => {
+            const handleImageDragEnd = (e) => {
+                // If there are still touches, check if we should continue pinching
+                if (e.touches && e.touches.length === 2) {
+                    const distance = getTouchDistance(e.touches);
+                    setLastTouchDistance(distance);
+                    return;
+                }
+
                 setIsDragging(false);
                 setLastTouchDistance(null);
             };
 
             useEffect(() => {
-                if (isDragging) {
+                if (isDragging || lastTouchDistance !== null) {
                     window.addEventListener('mousemove', handleImageDragMove);
                     window.addEventListener('mouseup', handleImageDragEnd);
-                    window.addEventListener('touchmove', handleImageDragMove);
+                    window.addEventListener('touchmove', handleImageDragMove, { passive: false });
                     window.addEventListener('touchend', handleImageDragEnd);
                     return () => {
                         window.removeEventListener('mousemove', handleImageDragMove);
@@ -291,7 +313,7 @@
                         window.removeEventListener('touchend', handleImageDragEnd);
                     };
                 }
-            }, [isDragging, dragStart]);
+            }, [isDragging, dragStart, lastTouchDistance]);
 
             const renderCanvas = (includeSafeMargins = true) => {
                 const canvas = canvasRef.current;
@@ -303,31 +325,42 @@
                 // Draw base image
                 if (baseImage) {
                     ctx.save();
-                    const imgScale = imageScale;
+
+                    // Center point of canvas
+                    const centerX = dimensions.width / 2;
+                    const centerY = dimensions.height / 2;
+
+                    // Apply position offset (scaled to canvas coordinates)
                     const imgX = imagePosition.x / scale;
                     const imgY = imagePosition.y / scale;
-                    
-                    ctx.translate(dimensions.width / 2, dimensions.height / 2);
-                    ctx.scale(imgScale, imgScale);
-                    ctx.translate(-dimensions.width / 2 + imgX / imgScale, -dimensions.height / 2 + imgY / imgScale);
-                    
+
+                    // Move to center + offset
+                    ctx.translate(centerX + imgX, centerY + imgY);
+
+                    // Apply rotation around the center
+                    ctx.rotate((imageRotation * Math.PI) / 180);
+
+                    // Apply zoom
+                    ctx.scale(imageScale, imageScale);
+
+                    // Calculate image dimensions to fill canvas
                     const imgAspect = baseImage.width / baseImage.height;
                     const canvasAspect = dimensions.width / dimensions.height;
-                    
+
                     let drawWidth = dimensions.width;
                     let drawHeight = dimensions.height;
-                    let offsetX = 0;
-                    let offsetY = 0;
-                    
+
                     if (imgAspect > canvasAspect) {
                         drawWidth = dimensions.height * imgAspect;
-                        offsetX = -(drawWidth - dimensions.width) / 2;
+                        drawHeight = dimensions.height;
                     } else {
+                        drawWidth = dimensions.width;
                         drawHeight = dimensions.width / imgAspect;
-                        offsetY = -(drawHeight - dimensions.height) / 2;
                     }
-                    
-                    ctx.drawImage(baseImage, offsetX, offsetY, drawWidth, drawHeight);
+
+                    // Draw image centered at origin (which is now at centerX + offset)
+                    ctx.drawImage(baseImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+
                     ctx.restore();
                 }
 
@@ -531,7 +564,7 @@
 
             useEffect(() => {
                 renderCanvas();
-            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, aspectRatio, additionalOverlays, showSafeMargins]);
+            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins]);
 
             // Reposition text elements when aspect ratio changes
             useEffect(() => {
@@ -808,6 +841,41 @@
                                                     onChange={(e) => setImagePosition(prev => ({ ...prev, y: parseFloat(e.target.value) }))}
                                                     className="w-full"
                                                 />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs md:text-sm font-medium text-gray-700 mb-2">
+                                                    Rotation
+                                                </label>
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    <button
+                                                        onClick={() => setImageRotation((imageRotation + 90) % 360)}
+                                                        className="px-2 py-2 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium transition"
+                                                        title="Rotate 90° clockwise"
+                                                    >
+                                                        90°
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setImageRotation((imageRotation + 180) % 360)}
+                                                        className="px-2 py-2 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium transition"
+                                                        title="Rotate 180°"
+                                                    >
+                                                        180°
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setImageRotation((imageRotation + 270) % 360)}
+                                                        className="px-2 py-2 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium transition"
+                                                        title="Rotate 270° clockwise (90° counter-clockwise)"
+                                                    >
+                                                        270°
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setImageRotation(0)}
+                                                        className="px-2 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-medium transition"
+                                                        title="Reset rotation"
+                                                    >
+                                                        Reset
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
