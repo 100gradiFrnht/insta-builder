@@ -69,6 +69,7 @@
         const { useState, useRef, useEffect } = React;
 
         const ASPECT_RATIOS = {
+            '3:4': { width: 1080, height: 1440, label: '3:4' },
             '4:5': { width: 1080, height: 1350, label: '4:5 (Post)' },
             '1:1': { width: 1080, height: 1080, label: '1:1 (Square)' },
             '16:9': { width: 1920, height: 1080, label: '16:9 (Landscape)' },
@@ -79,16 +80,19 @@
             const [aspectRatio, setAspectRatio] = useState('4:5');
             const [baseImage, setBaseImage] = useState(null);
             const [permanentOverlays, setPermanentOverlays] = useState({
+                '3:4': null,
                 '4:5': null,
                 '1:1': null,
                 '16:9': null,
                 '9:16': null
             });
             const [additionalOverlays, setAdditionalOverlays] = useState({
+                'regular-3:4': null,
                 'regular-4:5': null,
                 'regular-1:1': null,
                 'regular-16:9': null,
                 'regular-9:16': null,
+                'breaking-3:4': null,
                 'breaking-4:5': null,
                 'breaking-1:1': null,
                 'breaking-16:9': null,
@@ -103,12 +107,14 @@
             const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
             const [showMobileControls, setShowMobileControls] = useState(false);
             const [activeTab, setActiveTab] = useState('image');
-            
+            const [showSafeMargins, setShowSafeMargins] = useState(false);
+
             const canvasRef = useRef(null);
             const containerRef = useRef(null);
 
             // Predefined file paths for permanent overlays
             const PERMANENT_OVERLAY_PATHS = {
+                '3:4': './overlays/overlay-3-4.png',
                 '4:5': './overlays/overlay-4-5.png',
                 '1:1': './overlays/overlay-1-1.png',
                 '16:9': './overlays/overlay-16-9.png',
@@ -117,10 +123,12 @@
 
             // Predefined file paths for additional overlays (one for each aspect ratio)
             const ADDITIONAL_OVERLAY_PATHS = {
+                'regular-3:4': './overlays/regular-overlay-3-4.png',
                 'regular-4:5': './overlays/regular-overlay-4-5.png',
                 'regular-1:1': './overlays/regular-overlay-1-1.png',
                 'regular-16:9': './overlays/regular-overlay-16-9.png',
                 'regular-9:16': './overlays/regular-overlay-9-16.png',
+                'breaking-3:4': './overlays/breaking-overlay-3-4.png',
                 'breaking-4:5': './overlays/breaking-overlay-4-5.png',
                 'breaking-1:1': './overlays/breaking-overlay-1-1.png',
                 'breaking-16:9': './overlays/breaking-overlay-16-9.png',
@@ -201,13 +209,13 @@
             };
 
             const addText = () => {
-                const yPosition = selectedOverlay === 'regular' 
-                    ? dimensions.height - 210 
-                    : dimensions.height - 240;
+                const yPosition = selectedOverlay === 'regular'
+                    ? dimensions.height - 100
+                    : dimensions.height - 120;
                 
                 setTextElements(prev => [...prev, {
                     id: Date.now(),
-                    text: 'Double click to edit',
+                    text: 'Your text here',
                     x: dimensions.width / 2,
                     y: yPosition,
                     fontSize: 40,
@@ -268,7 +276,7 @@
                 }
             }, [isDragging, dragStart]);
 
-            const renderCanvas = () => {
+            const renderCanvas = (includeSafeMargins = true) => {
                 const canvas = canvasRef.current;
                 if (!canvas) return;
 
@@ -319,29 +327,137 @@
                     ctx.drawImage(currentPermanentOverlay, 0, 0, dimensions.width, dimensions.height);
                 }
 
+                // Draw 3:4 safe area centered on all aspect ratios if enabled (only for display, not export)
+                if (showSafeMargins && includeSafeMargins) {
+                    ctx.save();
+
+                    // 3:4 safe area (1080x1440) - centered on the canvas
+                    // Scale to fit within canvas if necessary
+                    const targetRatio = 3 / 4; // width/height for 3:4
+                    const canvasRatio = dimensions.width / dimensions.height;
+
+                    let safeWidth, safeHeight, marginLeft, marginTop;
+
+                    if (canvasRatio > targetRatio) {
+                        // Canvas is wider than 3:4, fit by height
+                        safeHeight = dimensions.height;
+                        safeWidth = safeHeight * targetRatio;
+                        marginLeft = (dimensions.width - safeWidth) / 2;
+                        marginTop = 0;
+                    } else {
+                        // Canvas is taller than 3:4, fit by width
+                        safeWidth = dimensions.width;
+                        safeHeight = safeWidth / targetRatio;
+                        marginLeft = 0;
+                        marginTop = (dimensions.height - safeHeight) / 2;
+                    }
+
+                    // Draw semi-transparent black overlay on areas outside safe area
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+
+                    // Top area (if any)
+                    if (marginTop > 0) {
+                        ctx.fillRect(0, 0, dimensions.width, marginTop);
+                    }
+
+                    // Bottom area (if any)
+                    if (marginTop + safeHeight < dimensions.height) {
+                        ctx.fillRect(0, marginTop + safeHeight, dimensions.width, dimensions.height - (marginTop + safeHeight));
+                    }
+
+                    // Left area (if any)
+                    if (marginLeft > 0) {
+                        ctx.fillRect(0, 0, marginLeft, dimensions.height);
+                    }
+
+                    // Right area (if any)
+                    if (marginLeft + safeWidth < dimensions.width) {
+                        ctx.fillRect(marginLeft + safeWidth, 0, dimensions.width - (marginLeft + safeWidth), dimensions.height);
+                    }
+
+                    // Draw red dashed border around safe area
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([10, 5]);
+                    ctx.strokeRect(marginLeft, marginTop, safeWidth, safeHeight);
+
+                    // Add label with background for better visibility
+                    ctx.setLineDash([]);
+                    ctx.font = 'bold 24px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+
+                    const labelText = '3:4 Safe Area';
+                    const textMetrics = ctx.measureText(labelText);
+                    const textWidth = textMetrics.width;
+                    const textHeight = 24; // font size
+                    const padding = 8;
+
+                    // Calculate label position (center of background box)
+                    const labelY = marginTop > 30 ? marginTop - 20 : marginTop + 20;
+
+                    // Draw background rectangle
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.fillRect(
+                        dimensions.width / 2 - textWidth / 2 - padding,
+                        labelY - textHeight / 2 - padding,
+                        textWidth + padding * 2,
+                        textHeight + padding * 2
+                    );
+
+                    // Draw white text on top (centered in the box)
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(labelText, dimensions.width / 2, labelY);
+
+                    ctx.restore();
+                }
+
                 // Draw text elements
                 textElements.forEach(el => {
                     ctx.font = `${el.fontWeight} ${el.fontSize}px ${el.fontFamily}`;
                     ctx.fillStyle = el.color;
                     ctx.textBaseline = 'top';
-                    
+
                     const maxWidth = el.maxWidth || dimensions.width - 100;
                     const lineHeight = el.fontSize * 1.2;
-                    
+
+                    // Text case transformation function
+                    const transformTextCase = (text, textCase) => {
+                        if (!textCase || textCase === 'default') return text;
+
+                        switch (textCase) {
+                            case 'uppercase':
+                                return text.toUpperCase();
+                            case 'lowercase':
+                                return text.toLowerCase();
+                            case 'titlecase':
+                                return text.replace(/\w\S*/g, (word) =>
+                                    word.charAt(0).toUpperCase() + word.substr(1).toLowerCase()
+                                );
+                            case 'sentencecase':
+                                return text.toLowerCase().replace(/(^\s*\w|[.!?]\s+\w)/g, (c) => c.toUpperCase());
+                            default:
+                                return text;
+                        }
+                    };
+
+                    // Apply text case transformation
+                    const transformedText = transformTextCase(el.text, el.textCase);
+
                     // Word wrap function
                     const wrapText = (text, maxWidth) => {
                         // First split by manual line breaks
                         const paragraphs = text.split('\n');
                         const allLines = [];
-                        
+
                         paragraphs.forEach(paragraph => {
                             const words = paragraph.split(' ');
                             let currentLine = '';
-                            
+
                             words.forEach(word => {
                                 const testLine = currentLine + (currentLine ? ' ' : '') + word;
                                 const metrics = ctx.measureText(testLine);
-                                
+
                                 if (metrics.width > maxWidth && currentLine !== '') {
                                     allLines.push(currentLine);
                                     currentLine = word;
@@ -349,24 +465,48 @@
                                     currentLine = testLine;
                                 }
                             });
-                            
+
                             if (currentLine) {
                                 allLines.push(currentLine);
                             }
                         });
-                        
+
                         return allLines;
                     };
-                    
-                    const lines = wrapText(el.text, maxWidth);
-                    
+
+                    const lines = wrapText(transformedText, maxWidth);
+
+                    // Calculate starting Y position (top of the text block)
+                    const totalHeight = lines.length * lineHeight;
+                    const startY = el.y - totalHeight;
+
+                    // Draw lines from top to bottom
                     lines.forEach((line, i) => {
-                        if (el.textAlign === 'center') {
+                        const lineY = startY + (i * lineHeight);
+                        const isLastLine = i === lines.length - 1;
+
+                        if (el.justify && !isLastLine && line.trim().split(/\s+/).length > 1) {
+                            // Justified text - distribute words evenly across the line
+                            const words = line.trim().split(/\s+/);
+                            const totalTextWidth = words.reduce((sum, word) => sum + ctx.measureText(word).width, 0);
+                            const totalSpaceWidth = maxWidth - totalTextWidth;
+                            const spaceWidth = totalSpaceWidth / (words.length - 1);
+
+                            ctx.textAlign = 'left';
+                            let currentX = el.x;
+                            words.forEach((word, wordIndex) => {
+                                ctx.fillText(word, currentX, lineY);
+                                currentX += ctx.measureText(word).width + spaceWidth;
+                            });
+                        } else if (el.textAlign === 'center') {
                             ctx.textAlign = 'center';
-                            ctx.fillText(line, el.x, el.y + (i * lineHeight));
+                            ctx.fillText(line, el.x, lineY);
+                        } else if (el.textAlign === 'right') {
+                            ctx.textAlign = 'right';
+                            ctx.fillText(line, el.x, lineY);
                         } else {
                             ctx.textAlign = 'left';
-                            ctx.fillText(line, el.x, el.y + (i * lineHeight));
+                            ctx.fillText(line, el.x, lineY);
                         }
                     });
                 });
@@ -374,14 +514,14 @@
 
             useEffect(() => {
                 renderCanvas();
-            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, aspectRatio, additionalOverlays]);
+            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, aspectRatio, additionalOverlays, showSafeMargins]);
 
             // Reposition text elements when aspect ratio changes
             useEffect(() => {
                 setTextElements(prev => prev.map(el => {
-                    const yPosition = selectedOverlay === 'regular' 
-                        ? dimensions.height - 210 
-                        : dimensions.height - 240;
+                    const yPosition = selectedOverlay === 'regular'
+                        ? dimensions.height - 100
+                        : dimensions.height - 120;
                     
                     return {
                         ...el,
@@ -400,21 +540,29 @@
                 }
 
                 try {
+                    // Re-render canvas without safe margins for export
+                    renderCanvas(false);
+
                     // Convert canvas to data URL
                     const dataUrl = canvas.toDataURL('image/png');
-                    
+
                     // Create download link
                     const link = document.createElement('a');
                     link.download = `esc-instagram-${aspectRatio}-${Date.now()}.png`;
                     link.href = dataUrl;
-                    
+
                     // Trigger download
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
+
+                    // Re-render with safe margins for display
+                    renderCanvas(true);
                 } catch (error) {
                     console.error('Export error:', error);
                     alert('Failed to export image. Error: ' + error.message);
+                    // Re-render with safe margins even on error
+                    renderCanvas(true);
                 }
             };
 
@@ -426,6 +574,9 @@
                 }
 
                 try {
+                    // Re-render canvas without safe margins for copy
+                    renderCanvas(false);
+
                     // Check if Clipboard API is available
                     if (navigator.clipboard && window.ClipboardItem) {
                         // Get blob from canvas
@@ -453,9 +604,14 @@
                         document.body.removeChild(link);
                         alert('Clipboard API not supported. Image downloaded instead.');
                     }
+
+                    // Re-render with safe margins for display
+                    renderCanvas(true);
                 } catch (error) {
                     console.error('Copy error:', error);
                     alert('Failed to copy image. Error: ' + error.message);
+                    // Re-render with safe margins even on error
+                    renderCanvas(true);
                 }
             };
 
@@ -483,8 +639,23 @@
                                             </button>
                                         ))}
                                     </div>
-                                    
-                                    <div 
+
+                                    {/* Safe margins toggle for all aspect ratios */}
+                                    <div className="mt-2 mb-3">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={showSafeMargins}
+                                                onChange={(e) => setShowSafeMargins(e.target.checked)}
+                                                className="w-4 h-4 text-blue-600 rounded"
+                                            />
+                                            <span className="text-xs md:text-sm text-gray-700 font-medium">
+                                                Show 3:4 Safe Area (Instagram Grid Crop)
+                                            </span>
+                                        </label>
+                                    </div>
+
+                                    <div
                                         ref={containerRef}
                                         className="canvas-container relative mx-auto bg-gray-100 rounded-lg overflow-hidden"
                                         style={{ 
@@ -507,30 +678,98 @@
                                     </div>
 
                                     {baseImage && (
-                                        <div className="mt-3 md:mt-4">
-                                            <div className="flex items-center justify-between mb-2">
-                                                <label className="block text-xs md:text-sm font-medium text-gray-700">
-                                                    Image Zoom: {imageScale.toFixed(2)}x
-                                                </label>
-                                                <button
-                                                    onClick={() => {
-                                                        setImageScale(1);
-                                                        setImagePosition({ x: 0, y: 0 });
-                                                    }}
-                                                    className="text-xs md:text-sm text-blue-600 hover:text-blue-700 font-medium"
-                                                >
-                                                    Reset Position
-                                                </button>
+                                        <div className="mt-3 md:mt-4 space-y-3">
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <label className="text-xs md:text-sm font-medium text-gray-700 whitespace-nowrap">
+                                                        Zoom
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        min="0.5"
+                                                        max="3"
+                                                        step="0.1"
+                                                        value={imageScale.toFixed(2)}
+                                                        onChange={(e) => setImageScale(parseFloat(e.target.value) || 1)}
+                                                        className="w-20 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                    />
+                                                    <button
+                                                        onClick={() => setImageScale(1)}
+                                                        className="ml-auto text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                                    >
+                                                        Reset
+                                                    </button>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="0.5"
+                                                    max="3"
+                                                    step="0.1"
+                                                    value={imageScale}
+                                                    onChange={(e) => setImageScale(parseFloat(e.target.value))}
+                                                    className="w-full"
+                                                />
                                             </div>
-                                            <input
-                                                type="range"
-                                                min="0.5"
-                                                max="3"
-                                                step="0.1"
-                                                value={imageScale}
-                                                onChange={(e) => setImageScale(parseFloat(e.target.value))}
-                                                className="w-full"
-                                            />
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <label className="text-xs md:text-sm font-medium text-gray-700 whitespace-nowrap">
+                                                        X Position
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        min="-500"
+                                                        max="500"
+                                                        value={imagePosition.x.toFixed(0)}
+                                                        onChange={(e) => setImagePosition(prev => ({ ...prev, x: parseFloat(e.target.value) || 0 }))}
+                                                        className="w-20 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                    />
+                                                    <button
+                                                        onClick={() => setImagePosition(prev => ({ ...prev, x: 0 }))}
+                                                        className="ml-auto text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                                    >
+                                                        Reset
+                                                    </button>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="-500"
+                                                    max="500"
+                                                    step="1"
+                                                    value={imagePosition.x}
+                                                    onChange={(e) => setImagePosition(prev => ({ ...prev, x: parseFloat(e.target.value) }))}
+                                                    className="w-full"
+                                                />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <label className="text-xs md:text-sm font-medium text-gray-700 whitespace-nowrap">
+                                                        Y Position
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        min="-500"
+                                                        max="500"
+                                                        value={imagePosition.y.toFixed(0)}
+                                                        onChange={(e) => setImagePosition(prev => ({ ...prev, y: parseFloat(e.target.value) || 0 }))}
+                                                        className="w-20 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                    />
+                                                    <button
+                                                        onClick={() => setImagePosition(prev => ({ ...prev, y: 0 }))}
+                                                        className="ml-auto text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                                    >
+                                                        Reset
+                                                    </button>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="-500"
+                                                    max="500"
+                                                    step="1"
+                                                    value={imagePosition.y}
+                                                    onChange={(e) => setImagePosition(prev => ({ ...prev, y: parseFloat(e.target.value) }))}
+                                                    className="w-full"
+                                                />
+                                            </div>
                                         </div>
                                     )}
 
@@ -680,6 +919,89 @@
                                                         <option value="Verdana">Verdana</option>
                                                         <option value="Impact">Impact</option>
                                                     </select>
+                                                    <div className="mb-2">
+                                                        <label className="text-xs text-gray-600 mb-1 block">Alignment</label>
+                                                        <div className="grid grid-cols-4 gap-1">
+                                                            <button
+                                                                onClick={() => updateTextElement(el.id, {
+                                                                    textAlign: 'left',
+                                                                    x: 50,
+                                                                    maxWidth: dimensions.width - 100,
+                                                                    justify: false
+                                                                })}
+                                                                className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                                    el.textAlign === 'left' && !el.justify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                }`}
+                                                                title="Align Left"
+                                                            >
+                                                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                                    <path d="M2 3h12v1H2V3zm0 3h8v1H2V6zm0 3h12v1H2V9zm0 3h8v1H2v-1z"/>
+                                                                </svg>
+                                                            </button>
+                                                            <button
+                                                                onClick={() => updateTextElement(el.id, {
+                                                                    textAlign: 'center',
+                                                                    x: dimensions.width / 2,
+                                                                    maxWidth: dimensions.width - 100,
+                                                                    justify: false
+                                                                })}
+                                                                className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                                    el.textAlign === 'center' && !el.justify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                }`}
+                                                                title="Align Center"
+                                                            >
+                                                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                                    <path d="M2 3h12v1H2V3zm2 3h8v1H4V6zm-2 3h12v1H2V9zm2 3h8v1H4v-1z"/>
+                                                                </svg>
+                                                            </button>
+                                                            <button
+                                                                onClick={() => updateTextElement(el.id, {
+                                                                    textAlign: 'right',
+                                                                    x: dimensions.width - 50,
+                                                                    maxWidth: dimensions.width - 100,
+                                                                    justify: false
+                                                                })}
+                                                                className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                                    el.textAlign === 'right' && !el.justify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                }`}
+                                                                title="Align Right"
+                                                            >
+                                                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                                    <path d="M2 3h12v1H2V3zm4 3h8v1H6V6zm-4 3h12v1H2V9zm4 3h8v1H6v-1z"/>
+                                                                </svg>
+                                                            </button>
+                                                            <button
+                                                                onClick={() => updateTextElement(el.id, {
+                                                                    textAlign: 'justify',
+                                                                    justify: true,
+                                                                    x: 50,
+                                                                    maxWidth: dimensions.width - 100
+                                                                })}
+                                                                className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                                    el.justify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                }`}
+                                                                title="Justify"
+                                                            >
+                                                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                                    <path d="M2 3h12v1H2V3zm0 3h12v1H2V6zm0 3h12v1H2V9zm0 3h12v1H2v-1z"/>
+                                                                </svg>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mb-2">
+                                                        <label className="text-xs text-gray-600 mb-1 block">Text Case</label>
+                                                        <select
+                                                            value={el.textCase || 'default'}
+                                                            onChange={(e) => updateTextElement(el.id, { textCase: e.target.value })}
+                                                            className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                        >
+                                                            <option value="default">Default</option>
+                                                            <option value="uppercase">UPPERCASE</option>
+                                                            <option value="lowercase">lowercase</option>
+                                                            <option value="titlecase">Title Case</option>
+                                                            <option value="sentencecase">Sentence case</option>
+                                                        </select>
+                                                    </div>
                                                     <button
                                                         onClick={() => deleteTextElement(el.id)}
                                                         className="w-full bg-red-500 text-white px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm hover:bg-red-600 transition"
