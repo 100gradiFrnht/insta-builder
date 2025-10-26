@@ -45,19 +45,20 @@
                 -webkit-overflow-scrolling: touch;
             }
             .controls-section {
-                position: fixed;
-                bottom: 0;
-                left: 0;
-                right: 0;
+                position: fixed !important;
+                bottom: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
                 background: white;
                 border-top: 1px solid #e5e7eb;
                 z-index: 50;
                 max-height: 60vh;
                 overflow-y: auto;
                 -webkit-overflow-scrolling: touch;
+                box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
             }
             .canvas-wrapper {
-                padding-bottom: 60vh;
+                margin-bottom: 60vh;
             }
         }
     </style>
@@ -574,27 +575,42 @@
                 }
 
                 try {
-                    // Re-render canvas without safe margins for copy
+                    // Re-render canvas without safe margins for copy/share
                     renderCanvas(false);
 
-                    // Check if Clipboard API is available
-                    if (navigator.clipboard && window.ClipboardItem) {
-                        // Get blob from canvas
-                        const blob = await new Promise((resolve, reject) => {
-                            canvas.toBlob((blob) => {
-                                if (blob) {
-                                    resolve(blob);
-                                } else {
-                                    reject(new Error('Failed to create blob from canvas'));
-                                }
-                            }, 'image/png', 1.0);
-                        });
+                    // Get blob from canvas
+                    const blob = await new Promise((resolve, reject) => {
+                        canvas.toBlob((blob) => {
+                            if (blob) {
+                                resolve(blob);
+                            } else {
+                                reject(new Error('Failed to create blob from canvas'));
+                            }
+                        }, 'image/png', 1.0);
+                    });
 
-                        // Copy to clipboard
+                    // Check if we're on mobile and Share API is available
+                    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+                    if (isMobile && navigator.share && navigator.canShare) {
+                        // Use Share API on mobile
+                        const file = new File([blob], `esc-instagram-${aspectRatio}-${Date.now()}.png`, { type: 'image/png' });
+
+                        if (navigator.canShare({ files: [file] })) {
+                            await navigator.share({
+                                files: [file],
+                                title: 'ESC Instagram Post',
+                                text: 'Created with ESC Instagram Template Editor'
+                            });
+                        } else {
+                            throw new Error('Sharing files not supported');
+                        }
+                    } else if (navigator.clipboard && window.ClipboardItem) {
+                        // Use Clipboard API on desktop
                         await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
                         alert('Image copied to clipboard!');
                     } else {
-                        // Fallback: download the image if clipboard API not available
+                        // Fallback: download the image
                         const dataUrl = canvas.toDataURL('image/png');
                         const link = document.createElement('a');
                         link.download = `esc-instagram-${aspectRatio}-${Date.now()}.png`;
@@ -602,14 +618,21 @@
                         document.body.appendChild(link);
                         link.click();
                         document.body.removeChild(link);
-                        alert('Clipboard API not supported. Image downloaded instead.');
+                        alert('Image downloaded.');
                     }
 
                     // Re-render with safe margins for display
                     renderCanvas(true);
                 } catch (error) {
-                    console.error('Copy error:', error);
-                    alert('Failed to copy image. Error: ' + error.message);
+                    console.error('Copy/Share error:', error);
+
+                    // If share fails, fallback to download
+                    if (error.name === 'AbortError') {
+                        // User cancelled share - do nothing
+                    } else {
+                        alert('Failed to share/copy image. Error: ' + error.message);
+                    }
+
                     // Re-render with safe margins even on error
                     renderCanvas(true);
                 }
@@ -778,7 +801,8 @@
                                             onClick={copyImage}
                                             className="bg-blue-600 text-white px-3 md:px-6 py-2 md:py-3 rounded-lg text-sm md:text-base font-semibold hover:bg-blue-700 transition"
                                         >
-                                            Copy
+                                            <span className="hidden md:inline">Copy</span>
+                                            <span className="md:hidden">Share</span>
                                         </button>
                                         <button
                                             onClick={exportImage}
