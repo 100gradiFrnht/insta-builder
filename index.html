@@ -92,6 +92,7 @@
             const [showMobileControls, setShowMobileControls] = useState(false);
             const [activeTab, setActiveTab] = useState('image');
             const [showSafeMargins, setShowSafeMargins] = useState(false);
+            const [lastTouchDistance, setLastTouchDistance] = useState(null);
 
             const canvasRef = useRef(null);
             const containerRef = useRef(null);
@@ -222,7 +223,22 @@
                 if (selectedText === id) setSelectedText(null);
             };
 
+            const getTouchDistance = (touches) => {
+                const dx = touches[0].clientX - touches[1].clientX;
+                const dy = touches[0].clientY - touches[1].clientY;
+                return Math.sqrt(dx * dx + dy * dy);
+            };
+
             const handleImageDragStart = (e) => {
+                // Handle pinch zoom
+                if (e.touches && e.touches.length === 2) {
+                    e.preventDefault();
+                    const distance = getTouchDistance(e.touches);
+                    setLastTouchDistance(distance);
+                    return;
+                }
+
+                // Handle single touch/mouse drag
                 e.preventDefault();
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -231,6 +247,22 @@
             };
 
             const handleImageDragMove = (e) => {
+                // Handle pinch zoom
+                if (e.touches && e.touches.length === 2) {
+                    e.preventDefault();
+                    const distance = getTouchDistance(e.touches);
+
+                    if (lastTouchDistance) {
+                        const scale = distance / lastTouchDistance;
+                        const newScale = Math.max(0.5, Math.min(3, imageScale * scale));
+                        setImageScale(newScale);
+                    }
+
+                    setLastTouchDistance(distance);
+                    return;
+                }
+
+                // Handle single touch/mouse drag
                 if (!isDragging) return;
                 e.preventDefault();
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -243,6 +275,7 @@
 
             const handleImageDragEnd = () => {
                 setIsDragging(false);
+                setLastTouchDistance(null);
             };
 
             useEffect(() => {
