@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>ESC Discord Instagram Template Editor</title>
+    <meta name="robots" content="noindex, nofollow">
+    <title>Instagram Template Editor</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -598,7 +599,7 @@
 
                     // Create download link
                     const link = document.createElement('a');
-                    link.download = `esc-instagram-${aspectRatio}-${Date.now()}.png`;
+                    link.download = `instagram-${aspectRatio}-${Date.now()}.png`;
                     link.href = dataUrl;
 
                     // Trigger download
@@ -643,13 +644,13 @@
 
                     if (isMobile && navigator.share && navigator.canShare) {
                         // Use Share API on mobile
-                        const file = new File([blob], `esc-instagram-${aspectRatio}-${Date.now()}.png`, { type: 'image/png' });
+                        const file = new File([blob], `instagram-${aspectRatio}-${Date.now()}.png`, { type: 'image/png' });
 
                         if (navigator.canShare({ files: [file] })) {
                             await navigator.share({
                                 files: [file],
-                                title: 'ESC Instagram Post',
-                                text: 'Created with ESC Instagram Template Editor'
+                                title: 'Instagram Post',
+                                text: 'Created with Instagram Template Editor'
                             });
                         } else {
                             throw new Error('Sharing files not supported');
@@ -662,7 +663,7 @@
                         // Fallback: download the image
                         const dataUrl = canvas.toDataURL('image/png');
                         const link = document.createElement('a');
-                        link.download = `esc-instagram-${aspectRatio}-${Date.now()}.png`;
+                        link.download = `instagram-${aspectRatio}-${Date.now()}.png`;
                         link.href = dataUrl;
                         document.body.appendChild(link);
                         link.click();
@@ -690,7 +691,7 @@
             return (
                 <div className="min-h-screen bg-gray-50">
                     <div className="max-w-7xl mx-auto">
-                        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 p-4">ESC Discord Instagram Template Editor</h1>
+                        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 p-4">Instagram Template Editor</h1>
                         
                         <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:px-4">
                             {/* Canvas - Always visible */}
