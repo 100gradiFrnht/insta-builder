@@ -57,7 +57,6 @@
             '3:4': { width: 1080, height: 1440, label: '3:4' },
             '4:5': { width: 1080, height: 1350, label: '4:5 (Post)' },
             '1:1': { width: 1080, height: 1080, label: '1:1 (Square)' },
-            '16:9': { width: 1920, height: 1080, label: '16:9 (Landscape)' },
             '9:16': { width: 1080, height: 1920, label: '9:16 (Story)' }
         };
 
@@ -68,24 +67,33 @@
                 '3:4': null,
                 '4:5': null,
                 '1:1': null,
-                '16:9': null,
                 '9:16': null
             });
             const [additionalOverlays, setAdditionalOverlays] = useState({
                 'regular-3:4': null,
                 'regular-4:5': null,
                 'regular-1:1': null,
-                'regular-16:9': null,
                 'regular-9:16': null,
                 'breaking-3:4': null,
                 'breaking-4:5': null,
                 'breaking-1:1': null,
-                'breaking-16:9': null,
                 'breaking-9:16': null
             });
             const [selectedOverlay, setSelectedOverlay] = useState('regular');
             const [textElements, setTextElements] = useState([]);
             const [selectedText, setSelectedText] = useState(null);
+            const [textBoxMargin, setTextBoxMargin] = useState(20);
+
+            // Global text formatting settings
+            const [globalFontSize, setGlobalFontSize] = useState(40);
+            const [globalColor, setGlobalColor] = useState('#ffffff');
+            const [globalFontFamily, setGlobalFontFamily] = useState('Helvetica Neue');
+            const [globalFontWeight, setGlobalFontWeight] = useState('normal');
+            const [globalFontStyle, setGlobalFontStyle] = useState('normal');
+            const [globalTextAlign, setGlobalTextAlign] = useState('left');
+            const [globalJustify, setGlobalJustify] = useState(false);
+            const [globalTextCase, setGlobalTextCase] = useState('default');
+
             const [imageScale, setImageScale] = useState(1);
             const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
             const [imageRotation, setImageRotation] = useState(0);
@@ -111,7 +119,6 @@
                 '3:4': './overlays/overlay-3-4.png',
                 '4:5': './overlays/overlay-4-5.png',
                 '1:1': './overlays/overlay-1-1.png',
-                '16:9': './overlays/overlay-16-9.png',
                 '9:16': './overlays/overlay-9-16.png'
             };
 
@@ -120,12 +127,10 @@
                 'regular-3:4': './overlays/regular-overlay-3-4.png',
                 'regular-4:5': './overlays/regular-overlay-4-5.png',
                 'regular-1:1': './overlays/regular-overlay-1-1.png',
-                'regular-16:9': './overlays/regular-overlay-16-9.png',
                 'regular-9:16': './overlays/regular-overlay-9-16.png',
                 'breaking-3:4': './overlays/breaking-overlay-3-4.png',
                 'breaking-4:5': './overlays/breaking-overlay-4-5.png',
                 'breaking-1:1': './overlays/breaking-overlay-1-1.png',
-                'breaking-16:9': './overlays/breaking-overlay-16-9.png',
                 'breaking-9:16': './overlays/breaking-overlay-9-16.png'
             };
 
@@ -222,26 +227,23 @@
             };
 
             const addText = () => {
-                let yPosition;
-                if (selectedOverlay === 'regular') {
-                    yPosition = dimensions.height - 100;
-                } else if (selectedOverlay === 'breaking') {
-                    yPosition = dimensions.height - 120;
-                } else {
-                    // 'none' overlay type
-                    yPosition = dimensions.height - 100;
-                }
+                const bottomMargin = aspectRatio === '9:16' ? 100 : 25;
+                const yPosition = dimensions.height - bottomMargin;
 
                 setTextElements(prev => [...prev, {
                     id: Date.now(),
                     text: 'Your text here',
                     x: dimensions.width / 2,
                     y: yPosition,
+                    useCustomSettings: false,
                     fontSize: 40,
                     color: '#ffffff',
                     fontFamily: 'Helvetica Neue',
-                    fontWeight: 'bold',
-                    textAlign: 'center',
+                    fontWeight: 'normal',
+                    fontStyle: 'normal',
+                    textAlign: 'left',
+                    textCase: 'default',
+                    justify: false,
                     maxWidth: dimensions.width - 100
                 }]);
             };
@@ -255,6 +257,24 @@
             const deleteTextElement = (id) => {
                 setTextElements(prev => prev.filter(el => el.id !== id));
                 if (selectedText === id) setSelectedText(null);
+            };
+
+            const moveTextElementUp = (index) => {
+                if (index === 0) return; // Already at the top
+                setTextElements(prev => {
+                    const newArray = [...prev];
+                    [newArray[index - 1], newArray[index]] = [newArray[index], newArray[index - 1]];
+                    return newArray;
+                });
+            };
+
+            const moveTextElementDown = (index) => {
+                if (index === textElements.length - 1) return; // Already at the bottom
+                setTextElements(prev => {
+                    const newArray = [...prev];
+                    [newArray[index], newArray[index + 1]] = [newArray[index + 1], newArray[index]];
+                    return newArray;
+                });
             };
 
             const getTouchDistance = (touches) => {
@@ -445,8 +465,8 @@
                     ctx.restore();
                 }
 
-                // Draw selected additional overlay for current aspect ratio (skip if 'none')
-                if (selectedOverlay !== 'none') {
+                // Draw selected additional overlay for current aspect ratio (skip if 'regular')
+                if (selectedOverlay !== 'regular') {
                     const overlayKey = `${selectedOverlay}-${aspectRatio}`;
                     const currentAdditionalOverlay = additionalOverlays[overlayKey];
                     if (currentAdditionalOverlay) {
@@ -545,14 +565,93 @@
                     ctx.restore();
                 }
 
-                // Draw text elements
-                textElements.forEach(el => {
-                    ctx.font = `${el.fontWeight} ${el.fontSize}px ${el.fontFamily}`;
-                    ctx.fillStyle = el.color;
-                    ctx.textBaseline = 'top';
+                // Draw text elements (calculate positions from bottom to top with margins)
+                const bottomMargin = aspectRatio === '9:16' ? 100 : 25;
+                let currentBottomY = dimensions.height - bottomMargin;
+                const textBoxHeights = [];
 
+                // First pass: calculate all text box heights
+                textElements.forEach((el, index) => {
+                    // Use global settings if not using custom settings
+                    const fontSize = el.useCustomSettings ? (el.fontSize || 40) : globalFontSize;
+                    const fontFamily = el.useCustomSettings ? (el.fontFamily || 'Helvetica Neue') : globalFontFamily;
+                    const fontStyle = el.useCustomSettings ? (el.fontStyle || 'normal') : globalFontStyle;
+                    const fontWeight = el.useCustomSettings ? (el.fontWeight || 'normal') : globalFontWeight;
+                    const textCase = el.useCustomSettings ? (el.textCase || 'default') : globalTextCase;
+
+                    ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+                    const lineHeight = fontSize * 1.2;
+                    const paddingVertical = 40;
+
+                    const transformTextCase = (text, textCase) => {
+                        if (!textCase || textCase === 'default') return text;
+                        switch (textCase) {
+                            case 'uppercase': return text.toUpperCase();
+                            case 'lowercase': return text.toLowerCase();
+                            case 'capitalize': return text.replace(/\b\w/g, l => l.toUpperCase());
+                            default: return text;
+                        }
+                    };
+
+                    const transformedText = transformTextCase(el.text, textCase);
+                    const textMargin = 30;
+                    const availableTextWidth = 965 - (textMargin * 2);
+
+                    const wrapText = (text, maxWidth) => {
+                        const paragraphs = text.split('\n');
+                        const allLines = [];
+                        paragraphs.forEach(paragraph => {
+                            if (paragraph.trim() === '') {
+                                allLines.push('');
+                                return;
+                            }
+                            const words = paragraph.split(' ');
+                            let currentLine = '';
+                            words.forEach(word => {
+                                const testLine = currentLine + (currentLine ? ' ' : '') + word;
+                                const metrics = ctx.measureText(testLine);
+                                if (metrics.width > maxWidth && currentLine !== '') {
+                                    allLines.push(currentLine);
+                                    currentLine = word;
+                                } else {
+                                    currentLine = testLine;
+                                }
+                            });
+                            if (currentLine) {
+                                allLines.push(currentLine);
+                            }
+                        });
+                        return allLines;
+                    };
+
+                    const lines = wrapText(transformedText, availableTextWidth);
+                    const totalTextHeight = lines.length * lineHeight;
+                    const rectHeight = totalTextHeight + paddingVertical * 2;
+
+                    textBoxHeights.push({
+                        height: rectHeight,
+                        marginBottom: textBoxMargin
+                    });
+                });
+
+                // Second pass: render text elements from bottom to top
+                textElements.forEach((el, index) => {
+                    // Use global settings if not using custom settings
+                    const fontSize = el.useCustomSettings ? (el.fontSize || 40) : globalFontSize;
+                    const fontFamily = el.useCustomSettings ? (el.fontFamily || 'Helvetica Neue') : globalFontFamily;
+                    const fontStyle = el.useCustomSettings ? (el.fontStyle || 'normal') : globalFontStyle;
+                    const fontWeight = el.useCustomSettings ? (el.fontWeight || 'normal') : globalFontWeight;
+                    const textCase = el.useCustomSettings ? (el.textCase || 'default') : globalTextCase;
+                    const textAlign = el.useCustomSettings ? (el.textAlign || 'left') : globalTextAlign;
+                    const justify = el.useCustomSettings ? (el.justify || false) : globalJustify;
+                    const color = el.useCustomSettings ? (el.color || '#ffffff') : globalColor;
+
+                    ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
                     const maxWidth = el.maxWidth || dimensions.width - 100;
-                    const lineHeight = el.fontSize * 1.2;
+                    const lineHeight = fontSize * 1.2;
+                    const paddingVertical = 40; // Top and bottom padding
+                    const paddingHorizontal = 20; // Left and right padding (for the box itself)
+                    const textMargin = 30; // Margin inside the textbox for text
 
                     // Text case transformation function
                     const transformTextCase = (text, textCase) => {
@@ -575,7 +674,7 @@
                     };
 
                     // Apply text case transformation
-                    const transformedText = transformTextCase(el.text, el.textCase);
+                    const transformedText = transformTextCase(el.text, textCase);
 
                     // Word wrap function
                     const wrapText = (text, maxWidth) => {
@@ -613,39 +712,106 @@
                         return allLines;
                     };
 
-                    const lines = wrapText(transformedText, maxWidth);
+                    // Calculate available width for text (textbox width minus margins)
+                    const availableTextWidth = 965 - (textMargin * 2);
+                    const lines = wrapText(transformedText, availableTextWidth);
 
-                    // Calculate starting Y position (top of the text block)
-                    const totalHeight = lines.length * lineHeight;
-                    const startY = el.y - totalHeight;
+                    // Calculate text block dimensions
+                    const totalTextHeight = lines.length * lineHeight;
+
+                    // Set fixed width to 965px
+                    let textBoxWidth = 965;
+
+                    // Rectangle dimensions
+                    const rectHeight = totalTextHeight + paddingVertical * 2;
+
+                    // Calculate stacked position from bottom to top
+                    const rectX = dimensions.width / 2 - textBoxWidth / 2;
+                    const rectY = currentBottomY - rectHeight;
+
+                    // Update currentBottomY for next textbox (add margin)
+                    currentBottomY = rectY - textBoxMargin;
+
+                    // Draw rectangle with gradient background and rounded corners
+                    ctx.save();
+
+                    const borderRadius = 50;
+
+                    // Create gradient (top to bottom: 55% transparent to black)
+                    const gradient = ctx.createLinearGradient(rectX, rectY, rectX, rectY + rectHeight);
+                    gradient.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
+                    gradient.addColorStop(1, 'rgba(0, 0, 0, 1.0)');
+
+                    // Draw filled rounded rectangle with gradient
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.moveTo(rectX + borderRadius, rectY);
+                    ctx.lineTo(rectX + textBoxWidth - borderRadius, rectY);
+                    ctx.arcTo(rectX + textBoxWidth, rectY, rectX + textBoxWidth, rectY + borderRadius, borderRadius);
+                    ctx.lineTo(rectX + textBoxWidth, rectY + rectHeight - borderRadius);
+                    ctx.arcTo(rectX + textBoxWidth, rectY + rectHeight, rectX + textBoxWidth - borderRadius, rectY + rectHeight, borderRadius);
+                    ctx.lineTo(rectX + borderRadius, rectY + rectHeight);
+                    ctx.arcTo(rectX, rectY + rectHeight, rectX, rectY + rectHeight - borderRadius, borderRadius);
+                    ctx.lineTo(rectX, rectY + borderRadius);
+                    ctx.arcTo(rectX, rectY, rectX + borderRadius, rectY, borderRadius);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Draw white inside stroke (2px) with rounded corners
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 2;
+                    const strokeInset = 1;
+                    const innerRadius = borderRadius - strokeInset;
+                    ctx.beginPath();
+                    ctx.moveTo(rectX + strokeInset + innerRadius, rectY + strokeInset);
+                    ctx.lineTo(rectX + textBoxWidth - strokeInset - innerRadius, rectY + strokeInset);
+                    ctx.arcTo(rectX + textBoxWidth - strokeInset, rectY + strokeInset, rectX + textBoxWidth - strokeInset, rectY + strokeInset + innerRadius, innerRadius);
+                    ctx.lineTo(rectX + textBoxWidth - strokeInset, rectY + rectHeight - strokeInset - innerRadius);
+                    ctx.arcTo(rectX + textBoxWidth - strokeInset, rectY + rectHeight - strokeInset, rectX + textBoxWidth - strokeInset - innerRadius, rectY + rectHeight - strokeInset, innerRadius);
+                    ctx.lineTo(rectX + strokeInset + innerRadius, rectY + rectHeight - strokeInset);
+                    ctx.arcTo(rectX + strokeInset, rectY + rectHeight - strokeInset, rectX + strokeInset, rectY + rectHeight - strokeInset - innerRadius, innerRadius);
+                    ctx.lineTo(rectX + strokeInset, rectY + strokeInset + innerRadius);
+                    ctx.arcTo(rectX + strokeInset, rectY + strokeInset, rectX + strokeInset + innerRadius, rectY + strokeInset, innerRadius);
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    ctx.restore();
+
+                    // Draw text on top
+                    ctx.fillStyle = color;
+                    ctx.textBaseline = 'top';
+
+                    // Calculate starting Y position for text (with padding)
+                    const textStartY = rectY + paddingVertical;
 
                     // Draw lines from top to bottom
                     lines.forEach((line, i) => {
-                        const lineY = startY + (i * lineHeight);
+                        const lineY = textStartY + (i * lineHeight);
                         const isLastLine = i === lines.length - 1;
 
-                        if (el.justify && !isLastLine && line.trim().split(/\s+/).length > 1) {
+                        if (justify && !isLastLine && line.trim().split(/\s+/).length > 1) {
                             // Justified text - distribute words evenly across the line
                             const words = line.trim().split(/\s+/);
                             const totalTextWidth = words.reduce((sum, word) => sum + ctx.measureText(word).width, 0);
-                            const totalSpaceWidth = maxWidth - totalTextWidth;
+                            const availableWidth = textBoxWidth - (textMargin * 2);
+                            const totalSpaceWidth = availableWidth - totalTextWidth;
                             const spaceWidth = totalSpaceWidth / (words.length - 1);
 
                             ctx.textAlign = 'left';
-                            let currentX = el.x;
+                            let currentX = rectX + textMargin;
                             words.forEach((word, wordIndex) => {
                                 ctx.fillText(word, currentX, lineY);
                                 currentX += ctx.measureText(word).width + spaceWidth;
                             });
-                        } else if (el.textAlign === 'center') {
+                        } else if (textAlign === 'center') {
                             ctx.textAlign = 'center';
-                            ctx.fillText(line, el.x, lineY);
-                        } else if (el.textAlign === 'right') {
+                            ctx.fillText(line, rectX + textBoxWidth / 2, lineY);
+                        } else if (textAlign === 'right') {
                             ctx.textAlign = 'right';
-                            ctx.fillText(line, el.x, lineY);
+                            ctx.fillText(line, rectX + textBoxWidth - textMargin, lineY);
                         } else {
                             ctx.textAlign = 'left';
-                            ctx.fillText(line, el.x, lineY);
+                            ctx.fillText(line, rectX + textMargin, lineY);
                         }
                     });
                 });
@@ -653,30 +819,14 @@
 
             useEffect(() => {
                 renderCanvas();
-            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation]);
+            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation, textBoxMargin, globalFontSize, globalColor, globalFontFamily, globalFontWeight, globalFontStyle, globalTextAlign, globalJustify, globalTextCase]);
 
             // Reposition text elements when aspect ratio changes
             useEffect(() => {
                 setTextElements(prev => prev.map(el => {
-                    let yPosition;
-                    if (selectedOverlay === 'regular') {
-                        yPosition = dimensions.height - 100;
-                    } else if (selectedOverlay === 'breaking') {
-                        yPosition = dimensions.height - 120;
-                    } else {
-                        // 'none' overlay type
-                        yPosition = dimensions.height - 100;
-                    }
-
-                    // Preserve x position based on alignment
-                    let xPosition;
-                    if (el.textAlign === 'left') {
-                        xPosition = 50;
-                    } else if (el.textAlign === 'right') {
-                        xPosition = dimensions.width - 50;
-                    } else {
-                        xPosition = dimensions.width / 2;
-                    }
+                    const bottomMargin = aspectRatio === '9:16' ? 100 : 25;
+                    const yPosition = dimensions.height - bottomMargin;
+                    const xPosition = dimensions.width / 2;
 
                     return {
                         ...el,
@@ -1266,39 +1416,258 @@
                                                 />
                                                 <span className="text-sm md:text-base font-medium text-gray-700">Breaking</span>
                                             </label>
-                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
-                                                <input
-                                                    type="radio"
-                                                    name="overlayType"
-                                                    value="none"
-                                                    checked={selectedOverlay === 'none'}
-                                                    onChange={(e) => setSelectedOverlay(e.target.value)}
-                                                    className="w-5 h-5 text-blue-600"
-                                                />
-                                                <span className="text-sm md:text-base font-medium text-gray-700">None</span>
-                                            </label>
                                         </div>
                                     </div>
 
                                     {/* Text Controls - Desktop: always show, Mobile: show in 'text' tab */}
                                     <div className={`${activeTab === 'text' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-3 md:p-4`}>
                                         <h2 className="text-base md:text-lg font-semibold mb-3">Text</h2>
+
+                                        {/* Global Text Formatting */}
+                                        <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                            <h3 className="text-sm font-semibold mb-2 text-gray-700">Global Formatting</h3>
+
+                                            <div className="grid grid-cols-2 gap-2 mb-2">
+                                                <div>
+                                                    <label className="text-xs text-gray-600">Size</label>
+                                                    <input
+                                                        type="number"
+                                                        value={globalFontSize}
+                                                        onChange={(e) => setGlobalFontSize(parseInt(e.target.value))}
+                                                        className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs text-gray-600">Color</label>
+                                                    <input
+                                                        type="color"
+                                                        value={globalColor}
+                                                        onChange={(e) => setGlobalColor(e.target.value)}
+                                                        className="w-full p-1 border border-gray-300 rounded h-8"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <label className="text-xs text-gray-600">Font Family</label>
+                                                <select
+                                                    value={globalFontFamily}
+                                                    onChange={(e) => setGlobalFontFamily(e.target.value)}
+                                                    className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                >
+                                                    <option value="Helvetica Neue">Helvetica Neue</option>
+                                                    <option value="Arial">Arial</option>
+                                                    <option value="Helvetica">Helvetica</option>
+                                                    <option value="Georgia">Georgia</option>
+                                                    <option value="Times New Roman">Times New Roman</option>
+                                                    <option value="Courier New">Courier New</option>
+                                                    <option value="Verdana">Verdana</option>
+                                                    <option value="Impact">Impact</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <label className="text-xs text-gray-600 mb-1 block">Font Style</label>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalFontWeight('normal');
+                                                            setGlobalFontStyle('normal');
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-xs font-medium transition ${
+                                                            globalFontWeight === 'normal' && globalFontStyle === 'normal' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        Normal
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalFontWeight('bold');
+                                                            setGlobalFontStyle('normal');
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-xs font-bold transition ${
+                                                            globalFontWeight === 'bold' && globalFontStyle === 'normal' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        Bold
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalFontWeight('normal');
+                                                            setGlobalFontStyle('italic');
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-xs italic transition ${
+                                                            globalFontWeight === 'normal' && globalFontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        Italic
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalFontWeight('bold');
+                                                            setGlobalFontStyle('italic');
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-xs font-bold italic transition ${
+                                                            globalFontWeight === 'bold' && globalFontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        Bold Italic
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <label className="text-xs text-gray-600 mb-1 block">Alignment</label>
+                                                <div className="grid grid-cols-4 gap-1">
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalTextAlign('left');
+                                                            setGlobalJustify(false);
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                            globalTextAlign === 'left' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                        title="Align Left"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                            <path d="M2 3h12v1H2V3zm0 3h8v1H2V6zm0 3h12v1H2V9zm0 3h8v1H2v-1z"/>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalTextAlign('center');
+                                                            setGlobalJustify(false);
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                            globalTextAlign === 'center' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                        title="Align Center"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                            <path d="M2 3h12v1H2V3zm2 3h8v1H4V6zm-2 3h12v1H2V9zm2 3h8v1H4v-1z"/>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalTextAlign('right');
+                                                            setGlobalJustify(false);
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                            globalTextAlign === 'right' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                        title="Align Right"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                            <path d="M2 3h12v1H2V3zm4 3h8v1H6V6zm-4 3h12v1H2V9zm4 3h8v1H6v-1z"/>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalTextAlign('justify');
+                                                            setGlobalJustify(true);
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                            globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                        title="Justify"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                            <path d="M2 3h12v1H2V3zm0 3h12v1H2V6zm0 3h12v1H2V9zm0 3h12v1H2v-1z"/>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <label className="text-xs text-gray-600">Text Case</label>
+                                                <select
+                                                    value={globalTextCase}
+                                                    onChange={(e) => setGlobalTextCase(e.target.value)}
+                                                    className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                >
+                                                    <option value="default">Default</option>
+                                                    <option value="uppercase">UPPERCASE</option>
+                                                    <option value="lowercase">lowercase</option>
+                                                    <option value="capitalize">Capitalize Each Word</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="text-xs text-gray-600 mb-1 block">Textbox Margin</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="500"
+                                                step="10"
+                                                value={textBoxMargin}
+                                                onChange={(e) => setTextBoxMargin(parseInt(e.target.value) || 0)}
+                                                className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                            />
+                                        </div>
                                         <button
                                             onClick={addText}
                                             className="w-full bg-blue-600 text-white px-3 md:px-4 py-2 rounded-lg text-sm md:text-base font-medium hover:bg-blue-700 transition mb-3"
                                         >
                                             Add Text
                                         </button>
-                                        
+
                                         <div className="space-y-3 max-h-96 overflow-y-auto">
-                                            {textElements.map(el => (
+                                            {[...textElements].reverse().map((el, reverseIndex) => {
+                                                const index = textElements.length - 1 - reverseIndex;
+                                                return (
                                                 <div key={el.id} className="border border-gray-200 rounded-lg p-2 md:p-3">
+                                                    {/* Header with number and reorder buttons */}
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-xs font-semibold text-gray-700">Textbox #{textElements.length - index}</span>
+                                                        <div className="flex gap-1">
+                                                            <button
+                                                                onClick={() => moveTextElementDown(index)}
+                                                                disabled={index === textElements.length - 1}
+                                                                className={`px-2 py-1 rounded text-xs transition ${
+                                                                    index === textElements.length - 1
+                                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                                                }`}
+                                                                title="Move Up (towards top of canvas)"
+                                                            >
+                                                                ↑
+                                                            </button>
+                                                            <button
+                                                                onClick={() => moveTextElementUp(index)}
+                                                                disabled={index === 0}
+                                                                className={`px-2 py-1 rounded text-xs transition ${
+                                                                    index === 0
+                                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                                                }`}
+                                                                title="Move Down (towards bottom of canvas)"
+                                                            >
+                                                                ↓
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
                                                     <textarea
                                                         value={el.text}
                                                         onChange={(e) => updateTextElement(el.id, { text: e.target.value })}
                                                         className="w-full p-2 border border-gray-300 rounded mb-2 text-xs md:text-sm"
                                                         rows="2"
                                                     />
+
+                                                    {/* Custom settings checkbox */}
+                                                    <label className="flex items-center space-x-2 mb-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={el.useCustomSettings || false}
+                                                            onChange={(e) => updateTextElement(el.id, { useCustomSettings: e.target.checked })}
+                                                            className="w-4 h-4 text-blue-600"
+                                                        />
+                                                        <span className="text-xs text-gray-700 font-medium">Use Custom Formatting</span>
+                                                    </label>
+
+                                                    {el.useCustomSettings && (
+                                                        <>
                                                     <div className="grid grid-cols-2 gap-2 mb-2">
                                                         <div>
                                                             <label className="text-xs text-gray-600">Size</label>
@@ -1334,13 +1703,60 @@
                                                         <option value="Impact">Impact</option>
                                                     </select>
                                                     <div className="mb-2">
+                                                        <label className="text-xs text-gray-600 mb-1 block">Font Style</label>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button
+                                                                onClick={() => updateTextElement(el.id, {
+                                                                    fontWeight: 'normal',
+                                                                    fontStyle: 'normal'
+                                                                })}
+                                                                className={`px-2 py-2 rounded text-xs font-medium transition ${
+                                                                    (el.fontWeight === 'normal' || !el.fontWeight) && (el.fontStyle === 'normal' || !el.fontStyle) ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                }`}
+                                                            >
+                                                                Normal
+                                                            </button>
+                                                            <button
+                                                                onClick={() => updateTextElement(el.id, {
+                                                                    fontWeight: 'bold',
+                                                                    fontStyle: 'normal'
+                                                                })}
+                                                                className={`px-2 py-2 rounded text-xs font-bold transition ${
+                                                                    el.fontWeight === 'bold' && (el.fontStyle === 'normal' || !el.fontStyle) ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                }`}
+                                                            >
+                                                                Bold
+                                                            </button>
+                                                            <button
+                                                                onClick={() => updateTextElement(el.id, {
+                                                                    fontWeight: 'normal',
+                                                                    fontStyle: 'italic'
+                                                                })}
+                                                                className={`px-2 py-2 rounded text-xs italic transition ${
+                                                                    (el.fontWeight === 'normal' || !el.fontWeight) && el.fontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                }`}
+                                                            >
+                                                                Italic
+                                                            </button>
+                                                            <button
+                                                                onClick={() => updateTextElement(el.id, {
+                                                                    fontWeight: 'bold',
+                                                                    fontStyle: 'italic'
+                                                                })}
+                                                                className={`px-2 py-2 rounded text-xs font-bold italic transition ${
+                                                                    el.fontWeight === 'bold' && el.fontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                }`}
+                                                            >
+                                                                Bold Italic
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div className="mb-2">
                                                         <label className="text-xs text-gray-600 mb-1 block">Alignment</label>
                                                         <div className="grid grid-cols-4 gap-1">
                                                             <button
                                                                 onClick={() => updateTextElement(el.id, {
                                                                     textAlign: 'left',
-                                                                    x: 50,
-                                                                    maxWidth: dimensions.width - 100,
                                                                     justify: false
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
@@ -1355,8 +1771,6 @@
                                                             <button
                                                                 onClick={() => updateTextElement(el.id, {
                                                                     textAlign: 'center',
-                                                                    x: dimensions.width / 2,
-                                                                    maxWidth: dimensions.width - 100,
                                                                     justify: false
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
@@ -1371,8 +1785,6 @@
                                                             <button
                                                                 onClick={() => updateTextElement(el.id, {
                                                                     textAlign: 'right',
-                                                                    x: dimensions.width - 50,
-                                                                    maxWidth: dimensions.width - 100,
                                                                     justify: false
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
@@ -1387,9 +1799,7 @@
                                                             <button
                                                                 onClick={() => updateTextElement(el.id, {
                                                                     textAlign: 'justify',
-                                                                    justify: true,
-                                                                    x: 50,
-                                                                    maxWidth: dimensions.width - 100
+                                                                    justify: true
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
                                                                     el.justify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -1416,14 +1826,18 @@
                                                             <option value="sentencecase">Sentence case</option>
                                                         </select>
                                                     </div>
+                                                        </>
+                                                    )}
+
                                                     <button
                                                         onClick={() => deleteTextElement(el.id)}
-                                                        className="w-full bg-red-500 text-white px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm hover:bg-red-600 transition"
+                                                        className="w-full bg-red-500 text-white px-2 md:px-3 py-1.5 md:py-2 rounded text-xs md:text-sm hover:bg-red-600 transition mt-2"
                                                     >
                                                         Delete
                                                     </button>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 </div>
