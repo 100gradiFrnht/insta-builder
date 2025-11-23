@@ -95,6 +95,13 @@
             const [activeTab, setActiveTab] = useState('image');
             const [showSafeMargins, setShowSafeMargins] = useState(false);
             const [lastTouchDistance, setLastTouchDistance] = useState(null);
+            const [useBlurBackground, setUseBlurBackground] = useState(false);
+            const [blurIntensity, setBlurIntensity] = useState(20);
+            const [blurImage, setBlurImage] = useState(null);
+            const [useBaseImageForBlur, setUseBaseImageForBlur] = useState(true);
+            const [blurImageScale, setBlurImageScale] = useState(1);
+            const [blurImagePosition, setBlurImagePosition] = useState({ x: 0, y: 0 });
+            const [blurImageRotation, setBlurImageRotation] = useState(0);
 
             const canvasRef = useRef(null);
             const containerRef = useRef(null);
@@ -195,11 +202,36 @@
                 }
             };
 
+            const handleBlurImageUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            setBlurImage(img);
+                            setBlurImageScale(1);
+                            setBlurImagePosition({ x: 0, y: 0 });
+                            setBlurImageRotation(0);
+                            setUseBaseImageForBlur(false);
+                        };
+                        img.src = event.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
             const addText = () => {
-                const yPosition = selectedOverlay === 'regular'
-                    ? dimensions.height - 100
-                    : dimensions.height - 120;
-                
+                let yPosition;
+                if (selectedOverlay === 'regular') {
+                    yPosition = dimensions.height - 100;
+                } else if (selectedOverlay === 'breaking') {
+                    yPosition = dimensions.height - 120;
+                } else {
+                    // 'none' overlay type
+                    yPosition = dimensions.height - 100;
+                }
+
                 setTextElements(prev => [...prev, {
                     id: Date.now(),
                     text: 'Your text here',
@@ -323,8 +355,71 @@
                 const ctx = canvas.getContext('2d');
                 ctx.clearRect(0, 0, dimensions.width, dimensions.height);
 
+                // Draw blurred background if enabled
+                if (useBlurBackground) {
+                    const blurSourceImage = useBaseImageForBlur ? baseImage : blurImage;
+
+                    if (blurSourceImage) {
+                        ctx.save();
+                        ctx.filter = `blur(${blurIntensity}px)`;
+
+                        // Center point of canvas
+                        const centerX = dimensions.width / 2;
+                        const centerY = dimensions.height / 2;
+
+                        // Apply blur image position offset (scaled to canvas coordinates)
+                        const blurImgX = blurImagePosition.x / scale;
+                        const blurImgY = blurImagePosition.y / scale;
+
+                        // Move to center + offset
+                        ctx.translate(centerX + blurImgX, centerY + blurImgY);
+
+                        // Apply rotation around the center
+                        ctx.rotate((blurImageRotation * Math.PI) / 180);
+
+                        // Apply zoom
+                        ctx.scale(blurImageScale, blurImageScale);
+
+                        // Calculate blur image dimensions to fill canvas (crop, not stretch)
+                        const blurImgAspect = blurSourceImage.width / blurSourceImage.height;
+                        const canvasAspect = dimensions.width / dimensions.height;
+
+                        let blurDrawWidth = dimensions.width;
+                        let blurDrawHeight = dimensions.height;
+
+                        if (blurImgAspect > canvasAspect) {
+                            blurDrawWidth = dimensions.height * blurImgAspect;
+                            blurDrawHeight = dimensions.height;
+                        } else {
+                            blurDrawWidth = dimensions.width;
+                            blurDrawHeight = dimensions.width / blurImgAspect;
+                        }
+
+                        // Draw blurred image centered at origin (which is now at centerX + offset)
+                        ctx.drawImage(blurSourceImage, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
+
+                        ctx.restore();
+                    }
+                }
+
                 // Draw base image
                 if (baseImage) {
+                    // Calculate image dimensions to fill canvas
+                    const imgAspect = baseImage.width / baseImage.height;
+                    const canvasAspect = dimensions.width / dimensions.height;
+
+                    let drawWidth = dimensions.width;
+                    let drawHeight = dimensions.height;
+
+                    if (imgAspect > canvasAspect) {
+                        drawWidth = dimensions.height * imgAspect;
+                        drawHeight = dimensions.height;
+                    } else {
+                        drawWidth = dimensions.width;
+                        drawHeight = dimensions.width / imgAspect;
+                    }
+
+                    // Draw main image with transformations
                     ctx.save();
 
                     // Center point of canvas
@@ -344,32 +439,19 @@
                     // Apply zoom
                     ctx.scale(imageScale, imageScale);
 
-                    // Calculate image dimensions to fill canvas
-                    const imgAspect = baseImage.width / baseImage.height;
-                    const canvasAspect = dimensions.width / dimensions.height;
-
-                    let drawWidth = dimensions.width;
-                    let drawHeight = dimensions.height;
-
-                    if (imgAspect > canvasAspect) {
-                        drawWidth = dimensions.height * imgAspect;
-                        drawHeight = dimensions.height;
-                    } else {
-                        drawWidth = dimensions.width;
-                        drawHeight = dimensions.width / imgAspect;
-                    }
-
                     // Draw image centered at origin (which is now at centerX + offset)
                     ctx.drawImage(baseImage, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
 
                     ctx.restore();
                 }
 
-                // Draw selected additional overlay for current aspect ratio
-                const overlayKey = `${selectedOverlay}-${aspectRatio}`;
-                const currentAdditionalOverlay = additionalOverlays[overlayKey];
-                if (currentAdditionalOverlay) {
-                    ctx.drawImage(currentAdditionalOverlay, 0, 0, dimensions.width, dimensions.height);
+                // Draw selected additional overlay for current aspect ratio (skip if 'none')
+                if (selectedOverlay !== 'none') {
+                    const overlayKey = `${selectedOverlay}-${aspectRatio}`;
+                    const currentAdditionalOverlay = additionalOverlays[overlayKey];
+                    if (currentAdditionalOverlay) {
+                        ctx.drawImage(currentAdditionalOverlay, 0, 0, dimensions.width, dimensions.height);
+                    }
                 }
 
                 // Draw permanent overlay for current aspect ratio (always on top)
@@ -502,6 +584,12 @@
                         const allLines = [];
 
                         paragraphs.forEach(paragraph => {
+                            // Handle empty lines (preserve line breaks)
+                            if (paragraph.trim() === '') {
+                                allLines.push('');
+                                return;
+                            }
+
                             const words = paragraph.split(' ');
                             let currentLine = '';
 
@@ -565,18 +653,34 @@
 
             useEffect(() => {
                 renderCanvas();
-            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins]);
+            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation]);
 
             // Reposition text elements when aspect ratio changes
             useEffect(() => {
                 setTextElements(prev => prev.map(el => {
-                    const yPosition = selectedOverlay === 'regular'
-                        ? dimensions.height - 100
-                        : dimensions.height - 120;
-                    
+                    let yPosition;
+                    if (selectedOverlay === 'regular') {
+                        yPosition = dimensions.height - 100;
+                    } else if (selectedOverlay === 'breaking') {
+                        yPosition = dimensions.height - 120;
+                    } else {
+                        // 'none' overlay type
+                        yPosition = dimensions.height - 100;
+                    }
+
+                    // Preserve x position based on alignment
+                    let xPosition;
+                    if (el.textAlign === 'left') {
+                        xPosition = 50;
+                    } else if (el.textAlign === 'right') {
+                        xPosition = dimensions.width - 50;
+                    } else {
+                        xPosition = dimensions.width / 2;
+                    }
+
                     return {
                         ...el,
-                        x: dimensions.width / 2,
+                        x: xPosition,
                         y: yPosition,
                         maxWidth: dimensions.width - 100
                     };
@@ -759,9 +863,9 @@
                                                     </label>
                                                     <input
                                                         type="number"
-                                                        min="0.5"
+                                                        min="0.1"
                                                         max="3"
-                                                        step="0.1"
+                                                        step="0.01"
                                                         value={imageScale.toFixed(2)}
                                                         onChange={(e) => setImageScale(parseFloat(e.target.value) || 1)}
                                                         className="w-20 px-2 py-1 text-xs border border-gray-300 rounded"
@@ -775,9 +879,9 @@
                                                 </div>
                                                 <input
                                                     type="range"
-                                                    min="0.5"
+                                                    min="0.1"
                                                     max="3"
-                                                    step="0.1"
+                                                    step="0.01"
                                                     value={imageScale}
                                                     onChange={(e) => setImageScale(parseFloat(e.target.value))}
                                                     className="w-full"
@@ -935,7 +1039,7 @@
                                     {/* Base Image - Desktop: always show, Mobile: show in 'image' tab */}
                                     <div className={`${activeTab === 'image' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-3 md:p-4`}>
                                         <h2 className="text-base md:text-lg font-semibold mb-3">Base Image</h2>
-                                        <label className="block">
+                                        <label className="block mb-3">
                                             <span className="sr-only">Choose base image</span>
                                             <input
                                                 type="file"
@@ -944,6 +1048,196 @@
                                                 className="block w-full text-xs md:text-sm text-gray-500 file:mr-2 md:file:mr-4 file:py-1.5 md:file:py-2 file:px-3 md:file:px-4 file:rounded-full file:border-0 file:text-xs md:file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                                             />
                                         </label>
+
+                                        {/* Blur Background Options */}
+                                        <div className="mt-3 pt-3 border-t border-gray-200">
+                                            <label className="flex items-center gap-2 cursor-pointer mb-3">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={useBlurBackground}
+                                                    onChange={(e) => setUseBlurBackground(e.target.checked)}
+                                                    className="w-4 h-4 text-blue-600 rounded"
+                                                />
+                                                <span className="text-xs md:text-sm text-gray-700 font-medium">
+                                                    Enable Blur Background
+                                                </span>
+                                            </label>
+
+                                            {useBlurBackground && (
+                                                <div className="space-y-3 pl-6 border-l-2 border-blue-200">
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={useBaseImageForBlur}
+                                                            onChange={(e) => setUseBaseImageForBlur(e.target.checked)}
+                                                            className="w-4 h-4 text-blue-600 rounded"
+                                                        />
+                                                        <span className="text-xs text-gray-700">
+                                                            Use base image for blur
+                                                        </span>
+                                                    </label>
+
+                                                    {!useBaseImageForBlur && (
+                                                        <label className="block">
+                                                            <span className="text-xs text-gray-600 mb-1 block">Blur Image</span>
+                                                            <input
+                                                                type="file"
+                                                                accept="image/*"
+                                                                onChange={handleBlurImageUpload}
+                                                                className="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+                                                            />
+                                                        </label>
+                                                    )}
+
+                                                    <div>
+                                                        <label className="text-xs text-gray-600 mb-1 block">Blur Intensity</label>
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                max="250"
+                                                                step="1"
+                                                                value={blurIntensity}
+                                                                onChange={(e) => setBlurIntensity(parseInt(e.target.value) || 0)}
+                                                                className="w-16 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                            />
+                                                        </div>
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="250"
+                                                            step="1"
+                                                            value={blurIntensity}
+                                                            onChange={(e) => setBlurIntensity(parseInt(e.target.value))}
+                                                            className="w-full"
+                                                        />
+                                                    </div>
+
+                                                    {/* Blur Image Controls */}
+                                                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                                                        <p className="text-xs font-medium text-gray-600">Blur Image Controls</p>
+
+                                                        <div>
+                                                            <label className="text-xs text-gray-600 mb-1 block">Zoom</label>
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <input
+                                                                    type="number"
+                                                                    min="0.1"
+                                                                    max="3"
+                                                                    step="0.01"
+                                                                    value={blurImageScale.toFixed(2)}
+                                                                    onChange={(e) => setBlurImageScale(parseFloat(e.target.value) || 1)}
+                                                                    className="w-16 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                                />
+                                                                <button
+                                                                    onClick={() => setBlurImageScale(1)}
+                                                                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                                                >
+                                                                    Reset
+                                                                </button>
+                                                            </div>
+                                                            <input
+                                                                type="range"
+                                                                min="0.1"
+                                                                max="3"
+                                                                step="0.01"
+                                                                value={blurImageScale}
+                                                                onChange={(e) => setBlurImageScale(parseFloat(e.target.value))}
+                                                                className="w-full"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="text-xs text-gray-600 mb-1 block">X Position</label>
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <input
+                                                                    type="number"
+                                                                    min="-500"
+                                                                    max="500"
+                                                                    value={blurImagePosition.x.toFixed(0)}
+                                                                    onChange={(e) => setBlurImagePosition(prev => ({ ...prev, x: parseFloat(e.target.value) || 0 }))}
+                                                                    className="w-16 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                                />
+                                                                <button
+                                                                    onClick={() => setBlurImagePosition(prev => ({ ...prev, x: 0 }))}
+                                                                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                                                >
+                                                                    Reset
+                                                                </button>
+                                                            </div>
+                                                            <input
+                                                                type="range"
+                                                                min="-500"
+                                                                max="500"
+                                                                step="1"
+                                                                value={blurImagePosition.x}
+                                                                onChange={(e) => setBlurImagePosition(prev => ({ ...prev, x: parseFloat(e.target.value) }))}
+                                                                className="w-full"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="text-xs text-gray-600 mb-1 block">Y Position</label>
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <input
+                                                                    type="number"
+                                                                    min="-500"
+                                                                    max="500"
+                                                                    value={blurImagePosition.y.toFixed(0)}
+                                                                    onChange={(e) => setBlurImagePosition(prev => ({ ...prev, y: parseFloat(e.target.value) || 0 }))}
+                                                                    className="w-16 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                                />
+                                                                <button
+                                                                    onClick={() => setBlurImagePosition(prev => ({ ...prev, y: 0 }))}
+                                                                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                                                >
+                                                                    Reset
+                                                                </button>
+                                                            </div>
+                                                            <input
+                                                                type="range"
+                                                                min="-500"
+                                                                max="500"
+                                                                step="1"
+                                                                value={blurImagePosition.y}
+                                                                onChange={(e) => setBlurImagePosition(prev => ({ ...prev, y: parseFloat(e.target.value) }))}
+                                                                className="w-full"
+                                                            />
+                                                        </div>
+
+                                                        <div>
+                                                            <label className="text-xs text-gray-600 mb-1 block">Rotation</label>
+                                                            <div className="grid grid-cols-4 gap-1">
+                                                                <button
+                                                                    onClick={() => setBlurImageRotation((blurImageRotation + 90) % 360)}
+                                                                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs transition"
+                                                                >
+                                                                    90°
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setBlurImageRotation((blurImageRotation + 180) % 360)}
+                                                                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs transition"
+                                                                >
+                                                                    180°
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setBlurImageRotation((blurImageRotation + 270) % 360)}
+                                                                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs transition"
+                                                                >
+                                                                    270°
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setBlurImageRotation(0)}
+                                                                    className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs transition"
+                                                                >
+                                                                    Reset
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Additional Overlays - Desktop: always show, Mobile: show in 'overlays' tab */}
@@ -971,6 +1265,17 @@
                                                     className="w-5 h-5 text-blue-600"
                                                 />
                                                 <span className="text-sm md:text-base font-medium text-gray-700">Breaking</span>
+                                            </label>
+                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                                                <input
+                                                    type="radio"
+                                                    name="overlayType"
+                                                    value="none"
+                                                    checked={selectedOverlay === 'none'}
+                                                    onChange={(e) => setSelectedOverlay(e.target.value)}
+                                                    className="w-5 h-5 text-blue-600"
+                                                />
+                                                <span className="text-sm md:text-base font-medium text-gray-700">None</span>
                                             </label>
                                         </div>
                                     </div>
