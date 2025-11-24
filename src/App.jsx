@@ -371,17 +371,20 @@ export default function App() {
                         }
 
                         // Create temporary canvas for StackBlur (better iOS compatibility)
+                        // Scale down for better performance on iOS Safari
+                        const blurScale = 0.25; // Blur at 25% size for performance
                         const tempCanvas = document.createElement('canvas');
-                        tempCanvas.width = blurDrawWidth;
-                        tempCanvas.height = blurDrawHeight;
+                        tempCanvas.width = blurDrawWidth * blurScale;
+                        tempCanvas.height = blurDrawHeight * blurScale;
                         const tempCtx = tempCanvas.getContext('2d');
-                        tempCtx.drawImage(blurSourceImage, 0, 0, blurDrawWidth, blurDrawHeight);
+                        tempCtx.drawImage(blurSourceImage, 0, 0, tempCanvas.width, tempCanvas.height);
 
-                        // Apply StackBlur (works on iOS)
-                        canvasRGBA(tempCanvas, 0, 0, blurDrawWidth, blurDrawHeight, blurIntensity);
+                        // Apply StackBlur (works on iOS, scale blur radius accordingly)
+                        const scaledBlurRadius = Math.max(1, Math.round(blurIntensity * blurScale));
+                        canvasRGBA(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, scaledBlurRadius);
 
-                        // Draw blurred image to main canvas
-                        ctx.drawImage(tempCanvas, -blurDrawWidth / 2, -blurDrawHeight / 2);
+                        // Draw scaled-up blurred image to main canvas
+                        ctx.drawImage(tempCanvas, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
 
                         ctx.restore();
                     }
@@ -758,7 +761,9 @@ export default function App() {
                     ctx.fillStyle = gradient;
                     ctx.beginPath();
 
-                    if (isCustomOverlay) {
+                    // Only the top textbox (last index) should have square top corners with Custom overlay
+                    const isTopTextbox = index === textElements.length - 1;
+                    if (isCustomOverlay && isTopTextbox) {
                         // Square top corners, rounded bottom corners
                         ctx.moveTo(rectX, rectY);
                         ctx.lineTo(rectX + textBoxWidth, rectY);
@@ -790,7 +795,7 @@ export default function App() {
                     const innerRadius = borderRadius - strokeInset;
                     ctx.beginPath();
 
-                    if (isCustomOverlay) {
+                    if (isCustomOverlay && isTopTextbox) {
                         // Square top corners, rounded bottom corners
                         ctx.moveTo(rectX + strokeInset, rectY + strokeInset);
                         ctx.lineTo(rectX + textBoxWidth - strokeInset, rectY + strokeInset);
