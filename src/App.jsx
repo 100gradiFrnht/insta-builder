@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { ASPECT_RATIOS, OVERLAY_PATHS } from './utils/constants';
 import { transformTextCase } from './utils/textTransform';
 import { parseMarkdown } from './utils/markdown';
-import { canvasRGBA } from 'stackblur-canvas';
 
 export default function App() {
             const [aspectRatio, setAspectRatio] = useState('4:5');
@@ -370,21 +369,10 @@ export default function App() {
                             blurDrawHeight = dimensions.width / blurImgAspect;
                         }
 
-                        // Create temporary canvas for StackBlur (better iOS compatibility)
-                        // Scale down for better performance on iOS Safari
-                        const blurScale = 0.25; // Blur at 25% size for performance
-                        const tempCanvas = document.createElement('canvas');
-                        tempCanvas.width = blurDrawWidth * blurScale;
-                        tempCanvas.height = blurDrawHeight * blurScale;
-                        const tempCtx = tempCanvas.getContext('2d');
-                        tempCtx.drawImage(blurSourceImage, 0, 0, tempCanvas.width, tempCanvas.height);
-
-                        // Apply StackBlur (works on iOS, scale blur radius accordingly)
-                        const scaledBlurRadius = Math.max(1, Math.round(blurIntensity * blurScale));
-                        canvasRGBA(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, scaledBlurRadius);
-
-                        // Draw scaled-up blurred image to main canvas
-                        ctx.drawImage(tempCanvas, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
+                        // Apply CSS filter blur
+                        ctx.filter = `blur(${blurIntensity}px)`;
+                        ctx.drawImage(blurSourceImage, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
+                        ctx.filter = 'none';
 
                         ctx.restore();
                     }
