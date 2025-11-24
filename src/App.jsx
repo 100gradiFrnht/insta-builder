@@ -979,7 +979,7 @@ export default function App() {
                 }));
             }, [aspectRatio, selectedOverlay]);
 
-            const exportImage = () => {
+            const exportImage = async () => {
                 const canvas = canvasRef.current;
                 if (!canvas) {
                     alert('Canvas not ready. Please try again.');
@@ -990,18 +990,31 @@ export default function App() {
                     // Re-render canvas without safe margins for export
                     renderCanvas(false);
 
-                    // Convert canvas to data URL
-                    const dataUrl = canvas.toDataURL('image/png');
+                    // Get blob from canvas
+                    const blob = await new Promise((resolve, reject) => {
+                        canvas.toBlob((blob) => {
+                            if (blob) {
+                                resolve(blob);
+                            } else {
+                                reject(new Error('Failed to create blob from canvas'));
+                            }
+                        }, 'image/png');
+                    });
 
-                    // Create download link
+                    // Create download using anchor tag
+                    const url = URL.createObjectURL(blob);
                     const link = document.createElement('a');
                     link.download = `instagram-${aspectRatio}-${Date.now()}.png`;
-                    link.href = dataUrl;
-
-                    // Trigger download
+                    link.href = url;
+                    link.style.display = 'none';
                     document.body.appendChild(link);
                     link.click();
-                    document.body.removeChild(link);
+
+                    // Clean up
+                    setTimeout(() => {
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                    }, 100);
 
                     // Re-render with safe margins for display
                     renderCanvas(true);
@@ -1038,19 +1051,14 @@ export default function App() {
                     // Check if we're on mobile and Share API is available
                     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
-                    if (isMobile && navigator.share && navigator.canShare) {
+                    if (isMobile && navigator.share) {
                         // Use Share API on mobile
                         const file = new File([blob], `instagram-${aspectRatio}-${Date.now()}.png`, { type: 'image/png' });
-
-                        if (navigator.canShare({ files: [file] })) {
-                            await navigator.share({
-                                files: [file],
-                                title: 'Instagram Post',
-                                text: 'Created with Instagram Template Editor'
-                            });
-                        } else {
-                            throw new Error('Sharing files not supported');
-                        }
+                        await navigator.share({
+                            files: [file],
+                            title: 'Instagram Post',
+                            text: 'Created with Instagram Template Editor'
+                        });
                     } else if (navigator.clipboard && window.ClipboardItem) {
                         // Use Clipboard API on desktop
                         await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
