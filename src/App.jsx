@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ASPECT_RATIOS, OVERLAY_PATHS } from './utils/constants';
 import { transformTextCase } from './utils/textTransform';
 import { parseMarkdown } from './utils/markdown';
+import { canvasRGBA } from 'stackblur-canvas';
 
 export default function App() {
             const [aspectRatio, setAspectRatio] = useState('4:5');
@@ -369,10 +370,18 @@ export default function App() {
                             blurDrawHeight = dimensions.width / blurImgAspect;
                         }
 
-                        // Apply CSS filter blur
-                        ctx.filter = `blur(${blurIntensity}px)`;
-                        ctx.drawImage(blurSourceImage, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
-                        ctx.filter = 'none';
+                        // Create temporary canvas for StackBlur (better iOS compatibility)
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = blurDrawWidth;
+                        tempCanvas.height = blurDrawHeight;
+                        const tempCtx = tempCanvas.getContext('2d');
+                        tempCtx.drawImage(blurSourceImage, 0, 0, blurDrawWidth, blurDrawHeight);
+
+                        // Apply StackBlur (works on iOS)
+                        canvasRGBA(tempCanvas, 0, 0, blurDrawWidth, blurDrawHeight, blurIntensity);
+
+                        // Draw blurred image to main canvas
+                        ctx.drawImage(tempCanvas, -blurDrawWidth / 2, -blurDrawHeight / 2);
 
                         ctx.restore();
                     }
