@@ -59,6 +59,7 @@ export default function App() {
             const [showMobileControls, setShowMobileControls] = useState(true);
             const [activeTab, setActiveTab] = useState('image');
             const [showSafeMargins, setShowSafeMargins] = useState(false);
+            const [showGlobalFormatting, setShowGlobalFormatting] = useState(false);
             const [lastTouchDistance, setLastTouchDistance] = useState(null);
             const [useBlurBackground, setUseBlurBackground] = useState(false);
             const [blurIntensity, setBlurIntensity] = useState(20);
@@ -1011,14 +1012,15 @@ export default function App() {
                         }
                     }
 
-                    // Calculate starting X based on alignment
+                    // Calculate starting X based on alignment (using same 30px padding as textboxes)
+                    const bannerTextMargin = 30;
                     let textX;
                     if (bannerTextAlign === 'center') {
                         textX = bannerX + (bannerWidth / 2) - (totalTextWidth / 2);
                     } else if (bannerTextAlign === 'right') {
-                        textX = bannerX + bannerWidth - 20 - totalTextWidth;
+                        textX = bannerX + bannerWidth - bannerTextMargin - totalTextWidth;
                     } else {
-                        textX = bannerX + 20;
+                        textX = bannerX + bannerTextMargin;
                     }
 
                     const textY = bannerTopY + (bannerHeight / 2);
@@ -1196,7 +1198,7 @@ export default function App() {
                         <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:px-4">
                             {/* Canvas - Always visible */}
                             <div className="lg:col-span-2 canvas-wrapper">
-                                <div className="bg-white rounded-lg shadow-lg p-2 md:p-4 mx-2 md:mx-0">
+                                <div className="bg-white rounded-lg shadow-lg p-2 md:p-4 mx-2 md:mx-0 lg:sticky lg:top-4">
                                     <div className="mb-3 flex flex-wrap gap-1 md:gap-2">
                                         {Object.entries(ASPECT_RATIOS).map(([key, value]) => (
                                             <button
@@ -1895,7 +1897,7 @@ export default function App() {
                                             Add Text
                                         </button>
 
-                                        <div className="space-y-3 max-h-96 overflow-y-auto mb-4">
+                                        <div className="space-y-3 mb-4">
                                             {[...textElements].reverse().map((el, reverseIndex) => {
                                                 const index = textElements.length - 1 - reverseIndex;
                                                 return (
@@ -1934,8 +1936,8 @@ export default function App() {
                                                     <textarea
                                                         value={el.text}
                                                         onChange={(e) => updateTextElement(el.id, { text: e.target.value })}
-                                                        className="w-full p-2 border border-gray-300 rounded mb-2 text-xs md:text-sm"
-                                                        rows="2"
+                                                        className="w-full p-2 border border-gray-300 rounded mb-2 text-xs md:text-sm resize-none overflow-hidden"
+                                                        rows={Math.max(3, el.text.split('\n').length + Math.ceil(el.text.length / 60))}
                                                     />
 
                                                     {/* Custom settings checkbox */}
@@ -2128,8 +2130,23 @@ export default function App() {
 
                                         {/* Global Text Formatting */}
                                         <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                            <h3 className="text-sm font-semibold mb-2 text-gray-700">Global Formatting</h3>
+                                            <button
+                                                onClick={() => setShowGlobalFormatting(!showGlobalFormatting)}
+                                                className="w-full flex items-center justify-between text-sm font-semibold mb-2 text-gray-700 hover:text-gray-900 transition py-1"
+                                            >
+                                                <span>Global Formatting</span>
+                                                <svg
+                                                    className={`w-4 h-4 transform transition-transform ${showGlobalFormatting ? 'rotate-180' : ''}`}
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    viewBox="0 0 24 24"
+                                                >
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            </button>
 
+                                            {showGlobalFormatting && (
+                                                <>
                                             <div className="grid grid-cols-2 gap-2 mb-2">
                                                 <div>
                                                     <label className="text-xs text-gray-600">Size</label>
@@ -2297,6 +2314,8 @@ export default function App() {
                                                     <option value="capitalize">Capitalize Each Word</option>
                                                 </select>
                                             </div>
+                                                </>
+                                            )}
                                         </div>
 
                                         <div className="mb-3">
