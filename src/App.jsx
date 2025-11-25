@@ -24,6 +24,7 @@ export default function App() {
                 'custom-9:16': null
             });
             const [selectedOverlay, setSelectedOverlay] = useState('regular');
+            const [overlayColor, setOverlayColor] = useState('white');
             const [textElements, setTextElements] = useState([]);
             const [selectedText, setSelectedText] = useState(null);
             const [textBoxMargin, setTextBoxMargin] = useState(20);
@@ -70,24 +71,16 @@ export default function App() {
             const canvasRef = useRef(null);
             const containerRef = useRef(null);
 
-            // Predefined file paths for permanent overlays
+            // Predefined file paths for permanent overlays (by color and aspect ratio)
             const PERMANENT_OVERLAY_PATHS = {
-                '3:4': './overlays/overlay-3-4.png',
-                '4:5': './overlays/overlay-4-5.png',
-                '1:1': './overlays/overlay-1-1.png',
-                '9:16': './overlays/overlay-9-16.png'
-            };
-
-            // Predefined file paths for additional overlays (one for each aspect ratio)
-            const ADDITIONAL_OVERLAY_PATHS = {
-                'regular-3:4': './overlays/regular-overlay-3-4.png',
-                'regular-4:5': './overlays/regular-overlay-4-5.png',
-                'regular-1:1': './overlays/regular-overlay-1-1.png',
-                'regular-9:16': './overlays/regular-overlay-9-16.png',
-                'custom-3:4': './overlays/custom-overlay-3-4.png',
-                'custom-4:5': './overlays/custom-overlay-4-5.png',
-                'custom-1:1': './overlays/custom-overlay-1-1.png',
-                'custom-9:16': './overlays/custom-overlay-9-16.png'
+                'white-3:4': './overlays/overlay-white-1-1.png',
+                'white-4:5': './overlays/overlay-white-4-5.png',
+                'white-1:1': './overlays/overlay-white-1-1.png',
+                'white-9:16': './overlays/overlay-white-9-16.png',
+                'black-3:4': './overlays/overlay-black-1-1.png',
+                'black-4:5': './overlays/overlay-black-4-5.png',
+                'black-1:1': './overlays/overlay-black-1-1.png',
+                'black-9:16': './overlays/overlay-black-9-16.png'
             };
 
             const dimensions = ASPECT_RATIOS[aspectRatio];
@@ -122,7 +115,7 @@ export default function App() {
                 });
 
                 // Load additional overlays
-                Object.entries(ADDITIONAL_OVERLAY_PATHS).forEach(([type, path]) => {
+                Object.entries(OVERLAY_PATHS).forEach(([type, path]) => {
                     fetch(path)
                         .then(response => response.blob())
                         .then(blob => {
@@ -468,17 +461,16 @@ export default function App() {
                     ctx.restore();
                 }
 
-                // Draw selected additional overlay for current aspect ratio (skip if 'regular')
-                if (selectedOverlay !== 'regular') {
-                    const overlayKey = `${selectedOverlay}-${aspectRatio}`;
-                    const currentAdditionalOverlay = additionalOverlays[overlayKey];
-                    if (currentAdditionalOverlay) {
-                        ctx.drawImage(currentAdditionalOverlay, 0, 0, dimensions.width, dimensions.height);
-                    }
+                // Draw selected additional overlay for current aspect ratio
+                const overlayKey = `${selectedOverlay}-${overlayColor}-${aspectRatio}`;
+                const currentAdditionalOverlay = additionalOverlays[overlayKey];
+                if (currentAdditionalOverlay) {
+                    ctx.drawImage(currentAdditionalOverlay, 0, 0, dimensions.width, dimensions.height);
                 }
 
                 // Draw permanent overlay for current aspect ratio (always on top)
-                const currentPermanentOverlay = permanentOverlays[aspectRatio];
+                const permanentOverlayKey = `${overlayColor}-${aspectRatio}`;
+                const currentPermanentOverlay = permanentOverlays[permanentOverlayKey];
                 if (currentPermanentOverlay) {
                     ctx.drawImage(currentPermanentOverlay, 0, 0, dimensions.width, dimensions.height);
                 }
@@ -1070,7 +1062,7 @@ export default function App() {
                         maxWidth: dimensions.width - 100
                     };
                 }));
-            }, [aspectRatio, selectedOverlay]);
+            }, [aspectRatio, selectedOverlay, overlayColor]);
 
             const exportImage = async () => {
                 const canvas = canvasRef.current;
@@ -1697,6 +1689,35 @@ export default function App() {
                                                     className="w-5 h-5 text-blue-600"
                                                 />
                                                 <span className="text-sm md:text-base font-medium text-gray-700">Custom</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* Overlay Color - Desktop: always show, Mobile: show in 'overlays' tab */}
+                                    <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
+                                        <h2 className="text-base md:text-lg font-semibold mb-2">Overlay Color</h2>
+                                        <div className="space-y-3">
+                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                                                <input
+                                                    type="radio"
+                                                    name="overlayColor"
+                                                    value="white"
+                                                    checked={overlayColor === 'white'}
+                                                    onChange={(e) => setOverlayColor(e.target.value)}
+                                                    className="w-5 h-5 text-blue-600"
+                                                />
+                                                <span className="text-sm md:text-base font-medium text-gray-700">White</span>
+                                            </label>
+                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                                                <input
+                                                    type="radio"
+                                                    name="overlayColor"
+                                                    value="black"
+                                                    checked={overlayColor === 'black'}
+                                                    onChange={(e) => setOverlayColor(e.target.value)}
+                                                    className="w-5 h-5 text-blue-600"
+                                                />
+                                                <span className="text-sm md:text-base font-medium text-gray-700">Black</span>
                                             </label>
                                         </div>
                                     </div>

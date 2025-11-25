@@ -3,8 +3,9 @@ import twemoji from 'twemoji';
 // Cache for loaded emoji images
 const emojiImageCache = new Map();
 
-// Regular expression to match emoji
-const emojiRegex = /(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/gu;
+// Regular expression to match emoji including flag sequences
+// Matches: flag sequences (regional indicators), emoji with variation selectors, and other emoji
+const emojiRegex = /([\u{1F1E6}-\u{1F1FF}]{2}|\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/gu;
 
 /**
  * Parse text and split it into segments of text and emoji

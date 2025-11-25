@@ -6,12 +6,20 @@ export const ASPECT_RATIOS = {
 };
 
 export const OVERLAY_PATHS = {
-  'regular-3:4': '/overlays/regular-overlay-3-4.png',
-  'regular-4:5': '/overlays/regular-overlay-4-5.png',
-  'regular-1:1': '/overlays/regular-overlay-1-1.png',
-  'regular-9:16': '/overlays/regular-overlay-9-16.png',
-  'custom-3:4': '/overlays/custom-overlay-3-4.png',
-  'custom-4:5': '/overlays/custom-overlay-4-5.png',
-  'custom-1:1': '/overlays/custom-overlay-1-1.png',
-  'custom-9:16': '/overlays/custom-overlay-9-16.png'
+  'regular-white-3:4': '/overlays/overlay-white-1-1.png',
+  'regular-white-4:5': '/overlays/overlay-white-4-5.png',
+  'regular-white-1:1': '/overlays/overlay-white-1-1.png',
+  'regular-white-9:16': '/overlays/overlay-white-9-16.png',
+  'regular-black-3:4': '/overlays/overlay-black-1-1.png',
+  'regular-black-4:5': '/overlays/overlay-black-4-5.png',
+  'regular-black-1:1': '/overlays/overlay-black-1-1.png',
+  'regular-black-9:16': '/overlays/overlay-black-9-16.png',
+  'custom-white-3:4': '/overlays/overlay-white-1-1.png',
+  'custom-white-4:5': '/overlays/overlay-white-4-5.png',
+  'custom-white-1:1': '/overlays/overlay-white-1-1.png',
+  'custom-white-9:16': '/overlays/overlay-white-9-16.png',
+  'custom-black-3:4': '/overlays/overlay-black-1-1.png',
+  'custom-black-4:5': '/overlays/overlay-black-4-5.png',
+  'custom-black-1:1': '/overlays/overlay-black-1-1.png',
+  'custom-black-9:16': '/overlays/overlay-black-9-16.png'
 };
