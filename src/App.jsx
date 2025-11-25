@@ -324,6 +324,13 @@ export default function App() {
                 const ctx = canvas.getContext('2d');
                 ctx.clearRect(0, 0, dimensions.width, dimensions.height);
 
+                // Detect platform for emoji rendering offsets
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+                const isMacSafari = /Safari/.test(navigator.userAgent) &&
+                                   !/Chrome/.test(navigator.userAgent) &&
+                                   /Mac/.test(navigator.userAgent) &&
+                                   !isIOS;
+
                 // Helper function to render text with emoji support
                 const renderTextWithEmoji = async (text, x, y, fontSize) => {
                     const segments = parseTextWithEmoji(text);
@@ -338,11 +345,15 @@ export default function App() {
                             // Draw emoji as Twemoji image
                             try {
                                 const emojiImg = await loadEmojiImage(segment.codePoint);
-                                const emojiSize = fontSize; // Match text size
-                                // Position emoji at baseline
-                                const emojiY = y;
+                                // Match emoji size to font size
+                                const emojiSize = fontSize;
+                                // Platform-specific offsets: Safari renders textBaseline differently
+                                let emojiOffset = 0;
+                                if (isIOS) emojiOffset = 0.15;
+                                else if (isMacSafari) emojiOffset = 0.10;
+                                const emojiY = y + fontSize * emojiOffset;
                                 ctx.drawImage(emojiImg, currentX, emojiY, emojiSize, emojiSize);
-                                currentX += emojiSize * 1.05; // Small gap after emoji
+                                currentX += emojiSize + 6; // 6px gap between emojis
                             } catch (error) {
                                 // Fallback to native emoji if Twemoji fails
                                 ctx.fillText(segment.content, currentX, y);
@@ -363,7 +374,7 @@ export default function App() {
                         if (segment.type === 'text') {
                             totalWidth += ctx.measureText(segment.content).width;
                         } else if (segment.type === 'emoji') {
-                            totalWidth += fontSize; // Emoji size matches text size
+                            totalWidth += fontSize + 6; // Match rendering: emojiSize + 6px gap
                         }
                     }
 
