@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ASPECT_RATIOS, OVERLAY_PATHS } from './utils/constants';
 import { transformTextCase } from './utils/textTransform';
 import { parseMarkdown } from './utils/markdown';
+import { parseTextWithEmoji, loadEmojiImage } from './utils/emoji';
 
 export default function App() {
             const [aspectRatio, setAspectRatio] = useState('4:5');
@@ -323,12 +324,58 @@ export default function App() {
                 }
             }, [isDragging, dragStart, lastTouchDistance]);
 
-            const renderCanvas = (includeSafeMargins = true) => {
+            const renderCanvas = async (includeSafeMargins = true) => {
                 const canvas = canvasRef.current;
                 if (!canvas) return;
 
                 const ctx = canvas.getContext('2d');
                 ctx.clearRect(0, 0, dimensions.width, dimensions.height);
+
+                // Helper function to render text with emoji support
+                const renderTextWithEmoji = async (text, x, y, fontSize) => {
+                    const segments = parseTextWithEmoji(text);
+                    let currentX = x;
+
+                    for (const segment of segments) {
+                        if (segment.type === 'text') {
+                            // Draw regular text
+                            ctx.fillText(segment.content, currentX, y);
+                            currentX += ctx.measureText(segment.content).width;
+                        } else if (segment.type === 'emoji') {
+                            // Draw emoji as Twemoji image
+                            try {
+                                const emojiImg = await loadEmojiImage(segment.codePoint);
+                                const emojiSize = fontSize; // Match text size
+                                // Position emoji at baseline
+                                const emojiY = y;
+                                ctx.drawImage(emojiImg, currentX, emojiY, emojiSize, emojiSize);
+                                currentX += emojiSize * 1.05; // Small gap after emoji
+                            } catch (error) {
+                                // Fallback to native emoji if Twemoji fails
+                                ctx.fillText(segment.content, currentX, y);
+                                currentX += ctx.measureText(segment.content).width;
+                            }
+                        }
+                    }
+
+                    return currentX - x; // Return total width
+                };
+
+                // Helper to measure text width including emojis
+                const measureTextWithEmoji = (text, fontSize) => {
+                    const segments = parseTextWithEmoji(text);
+                    let totalWidth = 0;
+
+                    for (const segment of segments) {
+                        if (segment.type === 'text') {
+                            totalWidth += ctx.measureText(segment.content).width;
+                        } else if (segment.type === 'emoji') {
+                            totalWidth += fontSize; // Emoji size matches text size
+                        }
+                    }
+
+                    return totalWidth;
+                };
 
                 // Draw blurred background if enabled
                 if (useBlurBackground) {
@@ -592,7 +639,8 @@ export default function App() {
                 });
 
                 // Second pass: render text elements from bottom to top
-                textElements.forEach((el, index) => {
+                for (let index = 0; index < textElements.length; index++) {
+                    const el = textElements[index];
                     // Use global settings if not using custom settings
                     const fontSize = el.useCustomSettings ? (el.fontSize || 40) : globalFontSize;
                     const fontFamily = el.useCustomSettings ? (el.fontFamily || 'Helvetica Neue') : globalFontFamily;
@@ -818,41 +866,48 @@ export default function App() {
                     const textStartY = rectY + paddingVertical;
 
                     // Draw lines from top to bottom with markdown support
-                    lines.forEach((line, i) => {
-                        const lineY = textStartY + (i * lineHeight);
-                        const segments = parseMarkdown(line);
+                    const renderLines = async () => {
+                        for (let i = 0; i < lines.length; i++) {
+                            const line = lines[i];
+                            const lineY = textStartY + (i * lineHeight);
+                            const segments = parseMarkdown(line);
 
-                        // Calculate total line width for alignment
-                        let totalLineWidth = 0;
-                        segments.forEach(seg => {
-                            const segWeight = seg.bold ? 'bold' : fontWeight;
-                            const segStyle = seg.italic ? 'italic' : fontStyle;
-                            ctx.font = `${segStyle} ${segWeight} ${fontSize}px ${fontFamily}`;
-                            totalLineWidth += ctx.measureText(seg.text).width;
-                        });
+                            // Calculate total line width for alignment (including emojis)
+                            let totalLineWidth = 0;
+                            for (const seg of segments) {
+                                const segWeight = seg.bold ? 'bold' : fontWeight;
+                                const segStyle = seg.italic ? 'italic' : fontStyle;
+                                ctx.font = `${segStyle} ${segWeight} ${fontSize}px ${fontFamily}`;
+                                totalLineWidth += measureTextWithEmoji(seg.text, fontSize);
+                            }
 
-                        // Calculate starting X based on alignment
-                        let startX;
-                        if (textAlign === 'center') {
-                            startX = rectX + textBoxWidth / 2 - totalLineWidth / 2;
-                        } else if (textAlign === 'right') {
-                            startX = rectX + textBoxWidth - textMargin - totalLineWidth;
-                        } else {
-                            startX = rectX + textMargin;
+                            // Calculate starting X based on alignment
+                            let startX;
+                            if (textAlign === 'center') {
+                                startX = rectX + textBoxWidth / 2 - totalLineWidth / 2;
+                            } else if (textAlign === 'right') {
+                                startX = rectX + textBoxWidth - textMargin - totalLineWidth;
+                            } else {
+                                startX = rectX + textMargin;
+                            }
+
+                            // Draw each segment with its styling
+                            let currentX = startX;
+                            for (const seg of segments) {
+                                const segWeight = seg.bold ? 'bold' : fontWeight;
+                                const segStyle = seg.italic ? 'italic' : fontStyle;
+                                ctx.font = `${segStyle} ${segWeight} ${fontSize}px ${fontFamily}`;
+                                ctx.textAlign = 'left';
+
+                                // Render text with emoji support
+                                const width = await renderTextWithEmoji(seg.text, currentX, lineY, fontSize);
+                                currentX += width;
+                            }
                         }
+                    };
 
-                        // Draw each segment with its styling
-                        let currentX = startX;
-                        segments.forEach(seg => {
-                            const segWeight = seg.bold ? 'bold' : fontWeight;
-                            const segStyle = seg.italic ? 'italic' : fontStyle;
-                            ctx.font = `${segStyle} ${segWeight} ${fontSize}px ${fontFamily}`;
-                            ctx.textAlign = 'left';
-                            ctx.fillText(seg.text, currentX, lineY);
-                            currentX += ctx.measureText(seg.text).width;
-                        });
-                    });
-                });
+                    await renderLines();
+                }
 
                 // Draw tag banner on top of the topmost textbox (when Custom overlay is selected)
                 if (isCustomOverlay && textElements.length > 0) {
@@ -925,16 +980,33 @@ export default function App() {
 
                     const displayText = transformBannerText(bannerText);
 
-                    // Draw banner text with letter spacing
+                    // Draw banner text with letter spacing and emoji support
                     ctx.fillStyle = '#ffffff';
                     ctx.font = `${bannerFontStyle} ${bannerFontWeight} ${bannerFontSize}px ${bannerFontFamily}`;
                     ctx.textBaseline = 'middle';
 
-                    // Calculate text width with letter spacing
-                    const chars = displayText.split('');
-                    const charWidths = chars.map(char => ctx.measureText(char).width);
+                    // Parse text for emojis
+                    const bannerSegments = parseTextWithEmoji(displayText);
                     const letterSpacingPx = bannerFontSize * bannerLetterSpacing;
-                    const totalTextWidth = charWidths.reduce((sum, w) => sum + w, 0) + (letterSpacingPx * (chars.length - 1));
+
+                    // Calculate widths for each segment
+                    const segmentWidths = [];
+                    let totalTextWidth = 0;
+                    for (const seg of bannerSegments) {
+                        if (seg.type === 'text') {
+                            // Split text into characters for letter spacing
+                            const chars = seg.content.split('');
+                            const charWidths = chars.map(char => ctx.measureText(char).width);
+                            const segWidth = charWidths.reduce((sum, w) => sum + w, 0) + (letterSpacingPx * (chars.length - 1));
+                            segmentWidths.push({ type: 'text', chars, charWidths, width: segWidth });
+                            totalTextWidth += segWidth;
+                        } else {
+                            // Emoji
+                            const emojiWidth = bannerFontSize;
+                            segmentWidths.push({ type: 'emoji', codePoint: seg.codePoint, width: emojiWidth });
+                            totalTextWidth += emojiWidth + letterSpacingPx;
+                        }
+                    }
 
                     // Calculate starting X based on alignment
                     let textX;
@@ -948,19 +1020,40 @@ export default function App() {
 
                     const textY = bannerTopY + (bannerHeight / 2);
 
-                    // Draw each character with custom letter spacing
-                    let currentX = textX;
-                    chars.forEach((char, i) => {
-                        ctx.fillText(char, currentX, textY);
-                        currentX += charWidths[i] + letterSpacingPx;
-                    });
+                    // Draw each segment with custom letter spacing
+                    const renderBannerText = async () => {
+                        let currentX = textX;
+                        for (const seg of segmentWidths) {
+                            if (seg.type === 'text') {
+                                // Draw characters with letter spacing
+                                for (let i = 0; i < seg.chars.length; i++) {
+                                    ctx.fillText(seg.chars[i], currentX, textY);
+                                    currentX += seg.charWidths[i] + letterSpacingPx;
+                                }
+                            } else {
+                                // Draw emoji
+                                try {
+                                    const emojiImg = await loadEmojiImage(seg.codePoint);
+                                    const emojiSize = bannerFontSize;
+                                    // Banner uses textBaseline 'middle', so center the emoji vertically
+                                    ctx.drawImage(emojiImg, currentX, textY - emojiSize / 2, emojiSize, emojiSize);
+                                    currentX += emojiSize + letterSpacingPx;
+                                } catch (error) {
+                                    // Skip on error
+                                    currentX += seg.width + letterSpacingPx;
+                                }
+                            }
+                        }
+                    };
+
+                    await renderBannerText();
 
                     ctx.restore();
                 }
             };
 
             useEffect(() => {
-                renderCanvas();
+                renderCanvas().catch(err => console.error('Render error:', err));
             }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation, textBoxMargin, globalFontSize, globalColor, globalFontFamily, globalFontWeight, globalFontStyle, globalTextAlign, globalJustify, globalTextCase, bannerText, bannerLetterSpacing, bannerColor, bannerFontSize, bannerFontFamily, bannerFontWeight, bannerFontStyle, bannerTextAlign, bannerTextCase, bannerOpacity]);
 
             // Reposition text elements when aspect ratio changes
@@ -988,7 +1081,7 @@ export default function App() {
 
                 try {
                     // Re-render canvas without safe margins for export
-                    renderCanvas(false);
+                    await renderCanvas(false);
 
                     // Get blob from canvas
                     const blob = await new Promise((resolve, reject) => {
@@ -1017,12 +1110,12 @@ export default function App() {
                     }, 100);
 
                     // Re-render with safe margins for display
-                    renderCanvas(true);
+                    await renderCanvas(true);
                 } catch (error) {
                     console.error('Export error:', error);
                     alert('Failed to export image. Error: ' + error.message);
                     // Re-render with safe margins even on error
-                    renderCanvas(true);
+                    await renderCanvas(true);
                 }
             };
 
@@ -1035,7 +1128,7 @@ export default function App() {
 
                 try {
                     // Re-render canvas without safe margins for copy/share
-                    renderCanvas(false);
+                    await renderCanvas(false);
 
                     // Get blob from canvas
                     const blob = await new Promise((resolve, reject) => {
@@ -1076,7 +1169,7 @@ export default function App() {
                     }
 
                     // Re-render with safe margins for display
-                    renderCanvas(true);
+                    await renderCanvas(true);
                 } catch (error) {
                     console.error('Copy/Share error:', error);
 
@@ -1088,7 +1181,7 @@ export default function App() {
                     }
 
                     // Re-render with safe margins even on error
-                    renderCanvas(true);
+                    await renderCanvas(true);
                 }
             };
 
