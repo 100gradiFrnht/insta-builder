@@ -1888,194 +1888,6 @@ export default function App() {
                                     <div className={`${activeTab === 'text' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
                                         <h2 className="text-base md:text-lg font-semibold mb-2">Text</h2>
 
-                                        {/* Global Text Formatting */}
-                                        <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                            <h3 className="text-sm font-semibold mb-2 text-gray-700">Global Formatting</h3>
-
-                                            <div className="grid grid-cols-2 gap-2 mb-2">
-                                                <div>
-                                                    <label className="text-xs text-gray-600">Size</label>
-                                                    <input
-                                                        type="number"
-                                                        value={globalFontSize}
-                                                        onChange={(e) => {
-                                                            const val = parseInt(e.target.value);
-                                                            if (!isNaN(val)) setGlobalFontSize(val);
-                                                        }}
-                                                        className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="text-xs text-gray-600">Color</label>
-                                                    <input
-                                                        type="color"
-                                                        value={globalColor}
-                                                        onChange={(e) => setGlobalColor(e.target.value)}
-                                                        className="w-full p-1 border border-gray-300 rounded h-8"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <div className="mb-2">
-                                                <label className="text-xs text-gray-600">Font Family</label>
-                                                <select
-                                                    value={globalFontFamily}
-                                                    onChange={(e) => setGlobalFontFamily(e.target.value)}
-                                                    className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
-                                                >
-                                                    <option value="Helvetica Neue">Helvetica Neue</option>
-                                                    <option value="Arial">Arial</option>
-                                                    <option value="Helvetica">Helvetica</option>
-                                                    <option value="Georgia">Georgia</option>
-                                                    <option value="Times New Roman">Times New Roman</option>
-                                                    <option value="Courier New">Courier New</option>
-                                                    <option value="Verdana">Verdana</option>
-                                                    <option value="Impact">Impact</option>
-                                                </select>
-                                            </div>
-
-                                            <div className="mb-2">
-                                                <label className="text-xs text-gray-600 mb-1 block">Font Style</label>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <button
-                                                        onClick={() => {
-                                                            setGlobalFontWeight('normal');
-                                                            setGlobalFontStyle('normal');
-                                                        }}
-                                                        className={`px-2 py-2 rounded text-xs font-medium transition ${
-                                                            globalFontWeight === 'normal' && globalFontStyle === 'normal' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                        }`}
-                                                    >
-                                                        Normal
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            setGlobalFontWeight('bold');
-                                                            setGlobalFontStyle('normal');
-                                                        }}
-                                                        className={`px-2 py-2 rounded text-xs font-bold transition ${
-                                                            globalFontWeight === 'bold' && globalFontStyle === 'normal' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                        }`}
-                                                    >
-                                                        Bold
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            setGlobalFontWeight('normal');
-                                                            setGlobalFontStyle('italic');
-                                                        }}
-                                                        className={`px-2 py-2 rounded text-xs italic transition ${
-                                                            globalFontWeight === 'normal' && globalFontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                        }`}
-                                                    >
-                                                        Italic
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            setGlobalFontWeight('bold');
-                                                            setGlobalFontStyle('italic');
-                                                        }}
-                                                        className={`px-2 py-2 rounded text-xs font-bold italic transition ${
-                                                            globalFontWeight === 'bold' && globalFontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                        }`}
-                                                    >
-                                                        Bold Italic
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            <div className="mb-2">
-                                                <label className="text-xs text-gray-600 mb-1 block">Alignment</label>
-                                                <div className="grid grid-cols-4 gap-1">
-                                                    <button
-                                                        onClick={() => {
-                                                            setGlobalTextAlign('left');
-                                                            setGlobalJustify(false);
-                                                        }}
-                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                            globalTextAlign === 'left' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                        }`}
-                                                        title="Align Left"
-                                                    >
-                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                                                            <path d="M2 3h12v1H2V3zm0 3h8v1H2V6zm0 3h12v1H2V9zm0 3h8v1H2v-1z"/>
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            setGlobalTextAlign('center');
-                                                            setGlobalJustify(false);
-                                                        }}
-                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                            globalTextAlign === 'center' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                        }`}
-                                                        title="Align Center"
-                                                    >
-                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                                                            <path d="M2 3h12v1H2V3zm2 3h8v1H4V6zm-2 3h12v1H2V9zm2 3h8v1H4v-1z"/>
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            setGlobalTextAlign('right');
-                                                            setGlobalJustify(false);
-                                                        }}
-                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                            globalTextAlign === 'right' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                        }`}
-                                                        title="Align Right"
-                                                    >
-                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                                                            <path d="M2 3h12v1H2V3zm4 3h8v1H6V6zm-4 3h12v1H2V9zm4 3h8v1H6v-1z"/>
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            setGlobalTextAlign('justify');
-                                                            setGlobalJustify(true);
-                                                        }}
-                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                            globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                                        }`}
-                                                        title="Justify"
-                                                    >
-                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                                                            <path d="M2 3h12v1H2V3zm0 3h12v1H2V6zm0 3h12v1H2V9zm0 3h12v1H2v-1z"/>
-                                                        </svg>
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            <div className="mb-2">
-                                                <label className="text-xs text-gray-600">Text Case</label>
-                                                <select
-                                                    value={globalTextCase}
-                                                    onChange={(e) => setGlobalTextCase(e.target.value)}
-                                                    className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
-                                                >
-                                                    <option value="default">Default</option>
-                                                    <option value="uppercase">UPPERCASE</option>
-                                                    <option value="lowercase">lowercase</option>
-                                                    <option value="capitalize">Capitalize Each Word</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <div className="mb-3">
-                                            <label className="text-xs text-gray-600 mb-1 block">Textbox Margin</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                max="500"
-                                                step="10"
-                                                value={textBoxMargin}
-                                                onChange={(e) => {
-                                                    const val = parseInt(e.target.value);
-                                                    if (!isNaN(val)) setTextBoxMargin(val);
-                                                }}
-                                                className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
-                                            />
-                                        </div>
                                         <button
                                             onClick={addText}
                                             className="w-full bg-blue-600 text-white px-3 md:px-4 py-2 rounded-lg text-sm md:text-base font-medium hover:bg-blue-700 transition mb-3"
@@ -2083,7 +1895,7 @@ export default function App() {
                                             Add Text
                                         </button>
 
-                                        <div className="space-y-3 max-h-96 overflow-y-auto">
+                                        <div className="space-y-3 max-h-96 overflow-y-auto mb-4">
                                             {[...textElements].reverse().map((el, reverseIndex) => {
                                                 const index = textElements.length - 1 - reverseIndex;
                                                 return (
@@ -2312,6 +2124,195 @@ export default function App() {
                                                 </div>
                                                 );
                                             })}
+                                        </div>
+
+                                        {/* Global Text Formatting */}
+                                        <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                            <h3 className="text-sm font-semibold mb-2 text-gray-700">Global Formatting</h3>
+
+                                            <div className="grid grid-cols-2 gap-2 mb-2">
+                                                <div>
+                                                    <label className="text-xs text-gray-600">Size</label>
+                                                    <input
+                                                        type="number"
+                                                        value={globalFontSize}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value);
+                                                            if (!isNaN(val)) setGlobalFontSize(val);
+                                                        }}
+                                                        className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="text-xs text-gray-600">Color</label>
+                                                    <input
+                                                        type="color"
+                                                        value={globalColor}
+                                                        onChange={(e) => setGlobalColor(e.target.value)}
+                                                        className="w-full p-1 border border-gray-300 rounded h-8"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <label className="text-xs text-gray-600">Font Family</label>
+                                                <select
+                                                    value={globalFontFamily}
+                                                    onChange={(e) => setGlobalFontFamily(e.target.value)}
+                                                    className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                >
+                                                    <option value="Helvetica Neue">Helvetica Neue</option>
+                                                    <option value="Arial">Arial</option>
+                                                    <option value="Helvetica">Helvetica</option>
+                                                    <option value="Georgia">Georgia</option>
+                                                    <option value="Times New Roman">Times New Roman</option>
+                                                    <option value="Courier New">Courier New</option>
+                                                    <option value="Verdana">Verdana</option>
+                                                    <option value="Impact">Impact</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <label className="text-xs text-gray-600 mb-1 block">Font Style</label>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalFontWeight('normal');
+                                                            setGlobalFontStyle('normal');
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-xs font-medium transition ${
+                                                            globalFontWeight === 'normal' && globalFontStyle === 'normal' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        Normal
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalFontWeight('bold');
+                                                            setGlobalFontStyle('normal');
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-xs font-bold transition ${
+                                                            globalFontWeight === 'bold' && globalFontStyle === 'normal' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        Bold
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalFontWeight('normal');
+                                                            setGlobalFontStyle('italic');
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-xs italic transition ${
+                                                            globalFontWeight === 'normal' && globalFontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        Italic
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalFontWeight('bold');
+                                                            setGlobalFontStyle('italic');
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-xs font-bold italic transition ${
+                                                            globalFontWeight === 'bold' && globalFontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                    >
+                                                        Bold Italic
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <label className="text-xs text-gray-600 mb-1 block">Alignment</label>
+                                                <div className="grid grid-cols-4 gap-1">
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalTextAlign('left');
+                                                            setGlobalJustify(false);
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                            globalTextAlign === 'left' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                        title="Align Left"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                            <path d="M2 3h12v1H2V3zm0 3h8v1H2V6zm0 3h12v1H2V9zm0 3h8v1H2v-1z"/>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalTextAlign('center');
+                                                            setGlobalJustify(false);
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                            globalTextAlign === 'center' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                        title="Align Center"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                            <path d="M2 3h12v1H2V3zm2 3h8v1H4V6zm-2 3h12v1H2V9zm2 3h8v1H4v-1z"/>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalTextAlign('right');
+                                                            setGlobalJustify(false);
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                            globalTextAlign === 'right' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                        title="Align Right"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                            <path d="M2 3h12v1H2V3zm4 3h8v1H6V6zm-4 3h12v1H2V9zm4 3h8v1H6v-1z"/>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            setGlobalTextAlign('justify');
+                                                            setGlobalJustify(true);
+                                                        }}
+                                                        className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
+                                                            globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        }`}
+                                                        title="Justify"
+                                                    >
+                                                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                                            <path d="M2 3h12v1H2V3zm0 3h12v1H2V6zm0 3h12v1H2V9zm0 3h12v1H2v-1z"/>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div className="mb-2">
+                                                <label className="text-xs text-gray-600">Text Case</label>
+                                                <select
+                                                    value={globalTextCase}
+                                                    onChange={(e) => setGlobalTextCase(e.target.value)}
+                                                    className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                >
+                                                    <option value="default">Default</option>
+                                                    <option value="uppercase">UPPERCASE</option>
+                                                    <option value="lowercase">lowercase</option>
+                                                    <option value="capitalize">Capitalize Each Word</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div className="mb-3">
+                                            <label className="text-xs text-gray-600 mb-1 block">Textbox Margin</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="500"
+                                                step="10"
+                                                value={textBoxMargin}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value);
+                                                    if (!isNaN(val)) setTextBoxMargin(val);
+                                                }}
+                                                className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                            />
                                         </div>
                                     </div>
                                 </div>
