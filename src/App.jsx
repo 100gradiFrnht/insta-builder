@@ -3,6 +3,7 @@ import { ASPECT_RATIOS, OVERLAY_PATHS } from './utils/constants';
 import { transformTextCase } from './utils/textTransform';
 import { parseMarkdown } from './utils/markdown';
 import { parseTextWithEmoji, loadEmojiImage } from './utils/emoji';
+import { canvasRGBA } from 'stackblur-canvas';
 
 // Banner tag presets
 const BANNER_PRESETS = {
@@ -494,7 +495,13 @@ export default function App() {
                     const blurSourceImage = useBaseImageForBlur ? baseImage : blurImage;
 
                     if (blurSourceImage) {
-                        ctx.save();
+                        // Create temporary canvas for blur processing
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = dimensions.width;
+                        tempCanvas.height = dimensions.height;
+                        const tempCtx = tempCanvas.getContext('2d');
+
+                        tempCtx.save();
 
                         // Center point of canvas
                         const centerX = dimensions.width / 2;
@@ -505,13 +512,13 @@ export default function App() {
                         const blurImgY = blurImagePosition.y / scale;
 
                         // Move to center + offset
-                        ctx.translate(centerX + blurImgX, centerY + blurImgY);
+                        tempCtx.translate(centerX + blurImgX, centerY + blurImgY);
 
                         // Apply rotation around the center
-                        ctx.rotate((blurImageRotation * Math.PI) / 180);
+                        tempCtx.rotate((blurImageRotation * Math.PI) / 180);
 
                         // Apply zoom
-                        ctx.scale(blurImageScale, blurImageScale);
+                        tempCtx.scale(blurImageScale, blurImageScale);
 
                         // Calculate blur image dimensions to fill canvas (crop, not stretch)
                         const blurImgAspect = blurSourceImage.width / blurSourceImage.height;
@@ -528,12 +535,15 @@ export default function App() {
                             blurDrawHeight = dimensions.width / blurImgAspect;
                         }
 
-                        // Apply CSS filter blur
-                        ctx.filter = `blur(${blurIntensity}px)`;
-                        ctx.drawImage(blurSourceImage, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
-                        ctx.filter = 'none';
+                        // Draw image to temporary canvas
+                        tempCtx.drawImage(blurSourceImage, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
+                        tempCtx.restore();
 
-                        ctx.restore();
+                        // Apply stackblur (works on iOS unlike CSS filter)
+                        canvasRGBA(tempCanvas, 0, 0, dimensions.width, dimensions.height, blurIntensity);
+
+                        // Draw blurred result to main canvas
+                        ctx.drawImage(tempCanvas, 0, 0);
                     }
                 }
 
