@@ -1385,6 +1385,46 @@ export default function App() {
 
                                     {baseImage && (
                                         <div className="mt-3 md:mt-4 space-y-3">
+                                            {/* Quick fit buttons */}
+                                            <div className="flex gap-2 pb-2 border-b border-gray-200">
+                                                <button
+                                                    onClick={() => {
+                                                        // Crop to fit: reset to default (fills canvas)
+                                                        setImageScale(1);
+                                                        setImagePosition({ x: 0, y: 0 });
+                                                    }}
+                                                    className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                                                >
+                                                    Crop to fit
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        // Fit to page: calculate scale to fit entire image within canvas
+                                                        const imgAspect = baseImage.width / baseImage.height;
+                                                        const canvasAspect = dimensions.width / dimensions.height;
+
+                                                        let scale;
+                                                        if (imgAspect > canvasAspect) {
+                                                            // Image is wider - it's being stretched horizontally to fill
+                                                            // To fit, scale down by the width ratio
+                                                            const drawWidth = dimensions.height * imgAspect;
+                                                            scale = dimensions.width / drawWidth;
+                                                        } else {
+                                                            // Image is taller - it's being stretched vertically to fill
+                                                            // To fit, scale down by the height ratio
+                                                            const drawHeight = dimensions.width / imgAspect;
+                                                            scale = dimensions.height / drawHeight;
+                                                        }
+
+                                                        setImageScale(scale);
+                                                        setImagePosition({ x: 0, y: 0 });
+                                                    }}
+                                                    className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                                                >
+                                                    Fit to page
+                                                </button>
+                                            </div>
+
                                             <div>
                                                 <div className="flex items-center gap-2 mb-2">
                                                     <label className="text-xs md:text-sm font-medium text-gray-700 whitespace-nowrap">
@@ -1651,6 +1691,12 @@ export default function App() {
                                                                 }}
                                                                 className="w-16 px-2 py-1 text-xs border border-gray-300 rounded"
                                                             />
+                                                            <button
+                                                                onClick={() => setBlurIntensity(50)}
+                                                                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                                                            >
+                                                                Reset
+                                                            </button>
                                                         </div>
                                                         <input
                                                             type="range"
