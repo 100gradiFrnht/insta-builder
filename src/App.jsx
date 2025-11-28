@@ -4,28 +4,97 @@ import { transformTextCase } from './utils/textTransform';
 import { parseMarkdown } from './utils/markdown';
 import { parseTextWithEmoji, loadEmojiImage } from './utils/emoji';
 
+// Banner tag presets
+const BANNER_PRESETS = {
+    breaking: { name: '🔴 Breaking', text: 'BREAKING', letterSpacing: 0.85, align: 'center', bgColor: '#850000' },
+    custom: { name: 'Custom', text: 'Custom', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    // Countries (alphabetically sorted)
+    albania: { name: '🇦🇱 Albania', text: '🇦🇱 Albania', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    andorra: { name: '🇦🇩 Andorra', text: '🇦🇩 Andorra', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    armenia: { name: '🇦🇲 Armenia', text: '🇦🇲 Armenia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    australia: { name: '🇦🇺 Australia', text: '🇦🇺 Australia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    austria: { name: '🇦🇹 Austria', text: '🇦🇹 Austria', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    azerbaijan: { name: '🇦🇿 Azerbaijan', text: '🇦🇿 Azerbaijan', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    belarus: { name: '🇧🇾 Belarus', text: '🇧🇾 Belarus', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    belgium: { name: '🇧🇪 Belgium', text: '🇧🇪 Belgium', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    bosnia: { name: '🇧🇦 Bosnia & Herzegovina', text: '🇧🇦 Bosnia & Herzegovina', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    bulgaria: { name: '🇧🇬 Bulgaria', text: '🇧🇬 Bulgaria', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    croatia: { name: '🇭🇷 Croatia', text: '🇭🇷 Croatia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    cyprus: { name: '🇨🇾 Cyprus', text: '🇨🇾 Cyprus', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    czechia: { name: '🇨🇿 Czechia', text: '🇨🇿 Czechia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    denmark: { name: '🇩🇰 Denmark', text: '🇩🇰 Denmark', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    estonia: { name: '🇪🇪 Estonia', text: '🇪🇪 Estonia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    finland: { name: '🇫🇮 Finland', text: '🇫🇮 Finland', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    france: { name: '🇫🇷 France', text: '🇫🇷 France', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    georgia: { name: '🇬🇪 Georgia', text: '🇬🇪 Georgia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    germany: { name: '🇩🇪 Germany', text: '🇩🇪 Germany', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    greece: { name: '🇬🇷 Greece', text: '🇬🇷 Greece', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    hungary: { name: '🇭🇺 Hungary', text: '🇭🇺 Hungary', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    iceland: { name: '🇮🇸 Iceland', text: '🇮🇸 Iceland', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    ireland: { name: '🇮🇪 Ireland', text: '🇮🇪 Ireland', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    israel: { name: '🇮🇱 Israel', text: '🇮🇱 Israel', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    italy: { name: '🇮🇹 Italy', text: '🇮🇹 Italy', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    latvia: { name: '🇱🇻 Latvia', text: '🇱🇻 Latvia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    lithuania: { name: '🇱🇹 Lithuania', text: '🇱🇹 Lithuania', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    luxembourg: { name: '🇱🇺 Luxembourg', text: '🇱🇺 Luxembourg', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    malta: { name: '🇲🇹 Malta', text: '🇲🇹 Malta', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    moldova: { name: '🇲🇩 Moldova', text: '🇲🇩 Moldova', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    monaco: { name: '🇲🇨 Monaco', text: '🇲🇨 Monaco', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    montenegro: { name: '🇲🇪 Montenegro', text: '🇲🇪 Montenegro', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    morocco: { name: '🇲🇦 Morocco', text: '🇲🇦 Morocco', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    netherlands: { name: '🇳🇱 Netherlands', text: '🇳🇱 Netherlands', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    northmacedonia: { name: '🇲🇰 North Macedonia', text: '🇲🇰 North Macedonia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    norway: { name: '🇳🇴 Norway', text: '🇳🇴 Norway', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    poland: { name: '🇵🇱 Poland', text: '🇵🇱 Poland', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    portugal: { name: '🇵🇹 Portugal', text: '🇵🇹 Portugal', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    romania: { name: '🇷🇴 Romania', text: '🇷🇴 Romania', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    russia: { name: '🇷🇺 Russia', text: '🇷🇺 Russia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    sanmarino: { name: '🇸🇲 San Marino', text: '🇸🇲 San Marino', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    serbia: { name: '🇷🇸 Serbia', text: '🇷🇸 Serbia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    slovakia: { name: '🇸🇰 Slovakia', text: '🇸🇰 Slovakia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    slovenia: { name: '🇸🇮 Slovenia', text: '🇸🇮 Slovenia', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    spain: { name: '🇪🇸 Spain', text: '🇪🇸 Spain', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    sweden: { name: '🇸🇪 Sweden', text: '🇸🇪 Sweden', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    switzerland: { name: '🇨🇭 Switzerland', text: '🇨🇭 Switzerland', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    turkiye: { name: '🇹🇷 Türkiye', text: '🇹🇷 Türkiye', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    ukraine: { name: '🇺🇦 Ukraine', text: '🇺🇦 Ukraine', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+    uk: { name: '🇬🇧 United Kingdom', text: '🇬🇧 United Kingdom', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
+};
+
 export default function App() {
             const [aspectRatio, setAspectRatio] = useState('4:5');
             const [baseImage, setBaseImage] = useState(null);
             const [permanentOverlays, setPermanentOverlays] = useState({
-                '3:4': null,
                 '4:5': null,
                 '1:1': null,
                 '9:16': null
             });
             const [additionalOverlays, setAdditionalOverlays] = useState({
-                'regular-3:4': null,
                 'regular-4:5': null,
                 'regular-1:1': null,
                 'regular-9:16': null,
-                'custom-3:4': null,
                 'custom-4:5': null,
                 'custom-1:1': null,
                 'custom-9:16': null
             });
-            const [selectedOverlay, setSelectedOverlay] = useState('regular');
+            const [selectedOverlay] = useState('custom');
             const [overlayColor, setOverlayColor] = useState('white');
-            const [textElements, setTextElements] = useState([]);
+            const [textElements, setTextElements] = useState([{
+                id: Date.now(),
+                text: 'Your text here',
+                x: 540,
+                y: 1194,
+                useCustomSettings: false,
+                fontSize: 40,
+                color: '#ffffff',
+                fontFamily: 'Helvetica Neue',
+                fontWeight: 'normal',
+                fontStyle: 'normal',
+                textAlign: 'left',
+                textCase: 'default',
+                justify: false,
+                maxWidth: 980
+            }]);
             const [selectedText, setSelectedText] = useState(null);
             const [textBoxMargin, setTextBoxMargin] = useState(20);
 
@@ -40,16 +109,18 @@ export default function App() {
             const [globalTextCase, setGlobalTextCase] = useState('default');
 
             // Tag banner settings (for Custom overlay)
-            const [bannerText, setBannerText] = useState('BREAKING');
-            const [bannerLetterSpacing, setBannerLetterSpacing] = useState(0.85);
-            const [bannerColor, setBannerColor] = useState('#850000');
+            const [bannerText, setBannerText] = useState('Custom');
+            const [bannerLetterSpacing, setBannerLetterSpacing] = useState(0);
+            const [bannerColor, setBannerColor] = useState('#000f85');
             const [bannerFontSize, setBannerFontSize] = useState(40);
             const [bannerFontFamily, setBannerFontFamily] = useState('Helvetica Neue');
             const [bannerFontWeight, setBannerFontWeight] = useState('bold');
             const [bannerFontStyle, setBannerFontStyle] = useState('normal');
-            const [bannerTextAlign, setBannerTextAlign] = useState('center');
+            const [bannerTextAlign, setBannerTextAlign] = useState('left');
             const [bannerTextCase, setBannerTextCase] = useState('uppercase');
             const [bannerOpacity, setBannerOpacity] = useState(0.6);
+            const [selectedBannerPreset, setSelectedBannerPreset] = useState('custom');
+            const [showBanner, setShowBanner] = useState(true);
 
             const [imageScale, setImageScale] = useState(1);
             const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
@@ -62,26 +133,25 @@ export default function App() {
             const [showGlobalFormatting, setShowGlobalFormatting] = useState(false);
             const [lastTouchDistance, setLastTouchDistance] = useState(null);
             const [useBlurBackground, setUseBlurBackground] = useState(false);
-            const [blurIntensity, setBlurIntensity] = useState(20);
+            const [blurIntensity, setBlurIntensity] = useState(50);
             const [blurImage, setBlurImage] = useState(null);
             const [useBaseImageForBlur, setUseBaseImageForBlur] = useState(true);
             const [blurImageScale, setBlurImageScale] = useState(1);
             const [blurImagePosition, setBlurImagePosition] = useState({ x: 0, y: 0 });
             const [blurImageRotation, setBlurImageRotation] = useState(0);
+            const [fontsLoaded, setFontsLoaded] = useState(false);
 
             const canvasRef = useRef(null);
             const containerRef = useRef(null);
 
             // Predefined file paths for permanent overlays (by color and aspect ratio)
             const PERMANENT_OVERLAY_PATHS = {
-                'white-3:4': './overlays/overlay-white-1-1.png',
-                'white-4:5': './overlays/overlay-white-4-5.png',
-                'white-1:1': './overlays/overlay-white-1-1.png',
-                'white-9:16': './overlays/overlay-white-9-16.png',
-                'black-3:4': './overlays/overlay-black-1-1.png',
-                'black-4:5': './overlays/overlay-black-4-5.png',
-                'black-1:1': './overlays/overlay-black-1-1.png',
-                'black-9:16': './overlays/overlay-black-9-16.png'
+                'white-4:5': `${import.meta.env.BASE_URL}overlays/overlay-white-4-5.png`,
+                'white-1:1': `${import.meta.env.BASE_URL}overlays/overlay-white-1-1.png`,
+                'white-9:16': `${import.meta.env.BASE_URL}overlays/overlay-white-9-16.png`,
+                'black-4:5': `${import.meta.env.BASE_URL}overlays/overlay-black-4-5.png`,
+                'black-1:1': `${import.meta.env.BASE_URL}overlays/overlay-black-1-1.png`,
+                'black-9:16': `${import.meta.env.BASE_URL}overlays/overlay-black-9-16.png`
             };
 
             const dimensions = ASPECT_RATIOS[aspectRatio];
@@ -140,6 +210,27 @@ export default function App() {
                 });
             }, []);
 
+            // Load fonts before rendering
+            useEffect(() => {
+                const loadFonts = async () => {
+                    try {
+                        await Promise.all([
+                            document.fonts.load('400 40px "Helvetica Neue"'),
+                            document.fonts.load('500 40px "Helvetica Neue"'),
+                            document.fonts.load('700 40px "Helvetica Neue"'),
+                            document.fonts.load('italic 400 40px "Helvetica Neue"'),
+                            document.fonts.load('italic 700 40px "Helvetica Neue"'),
+                            document.fonts.load('40px "Singing Sans"')
+                        ]);
+                        setFontsLoaded(true);
+                    } catch (error) {
+                        console.error('Error loading fonts:', error);
+                        setFontsLoaded(true); // Proceed anyway
+                    }
+                };
+                loadFonts();
+            }, []);
+
             const handleBaseImageUpload = (e) => {
                 const file = e.target.files[0];
                 if (file) {
@@ -177,7 +268,7 @@ export default function App() {
             };
 
             const addText = () => {
-                const bottomMargin = aspectRatio === '9:16' ? 100 : 25;
+                const bottomMargin = aspectRatio === '9:16' ? 112 : 37;
                 const yPosition = dimensions.height - bottomMargin;
 
                 setTextElements(prev => [...prev, {
@@ -225,6 +316,17 @@ export default function App() {
                     [newArray[index], newArray[index + 1]] = [newArray[index + 1], newArray[index]];
                     return newArray;
                 });
+            };
+
+            const handleBannerPresetChange = (presetKey) => {
+                setSelectedBannerPreset(presetKey);
+                const preset = BANNER_PRESETS[presetKey];
+                if (preset) {
+                    setBannerText(preset.text);
+                    setBannerLetterSpacing(preset.letterSpacing);
+                    setBannerTextAlign(preset.align);
+                    setBannerColor(preset.bgColor);
+                }
             };
 
             const getTouchDistance = (touches) => {
@@ -333,7 +435,7 @@ export default function App() {
                                    !isIOS;
 
                 // Helper function to render text with emoji support
-                const renderTextWithEmoji = async (text, x, y, fontSize) => {
+                const renderTextWithEmoji = async (text, x, y, fontSize, fontFamily = 'Helvetica Neue') => {
                     const segments = parseTextWithEmoji(text);
                     let currentX = x;
 
@@ -348,10 +450,12 @@ export default function App() {
                                 const emojiImg = await loadEmojiImage(segment.codePoint);
                                 // Match emoji size to font size
                                 const emojiSize = fontSize;
-                                // Platform-specific offsets: Safari renders textBaseline differently
+                                // Platform-specific and font-specific offsets
                                 let emojiOffset = 0;
                                 if (isIOS) emojiOffset = 0.15;
                                 else if (isMacSafari) emojiOffset = 0.10;
+                                // Singing Sans specific offset
+                                if (fontFamily === 'Singing Sans') emojiOffset = -0.10;
                                 const emojiY = y + fontSize * emojiOffset;
                                 ctx.drawImage(emojiImg, currentX, emojiY, emojiSize, emojiSize);
                                 currentX += emojiSize + 6; // 6px gap between emojis
@@ -487,93 +591,8 @@ export default function App() {
                     ctx.drawImage(currentPermanentOverlay, 0, 0, dimensions.width, dimensions.height);
                 }
 
-                // Draw 3:4 safe area centered on all aspect ratios if enabled (only for display, not export)
-                if (showSafeMargins && includeSafeMargins) {
-                    ctx.save();
-
-                    // 3:4 safe area (1080x1440) - centered on the canvas
-                    // Scale to fit within canvas if necessary
-                    const targetRatio = 3 / 4; // width/height for 3:4
-                    const canvasRatio = dimensions.width / dimensions.height;
-
-                    let safeWidth, safeHeight, marginLeft, marginTop;
-
-                    if (canvasRatio > targetRatio) {
-                        // Canvas is wider than 3:4, fit by height
-                        safeHeight = dimensions.height;
-                        safeWidth = safeHeight * targetRatio;
-                        marginLeft = (dimensions.width - safeWidth) / 2;
-                        marginTop = 0;
-                    } else {
-                        // Canvas is taller than 3:4, fit by width
-                        safeWidth = dimensions.width;
-                        safeHeight = safeWidth / targetRatio;
-                        marginLeft = 0;
-                        marginTop = (dimensions.height - safeHeight) / 2;
-                    }
-
-                    // Draw semi-transparent black overlay on areas outside safe area
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-
-                    // Top area (if any)
-                    if (marginTop > 0) {
-                        ctx.fillRect(0, 0, dimensions.width, marginTop);
-                    }
-
-                    // Bottom area (if any)
-                    if (marginTop + safeHeight < dimensions.height) {
-                        ctx.fillRect(0, marginTop + safeHeight, dimensions.width, dimensions.height - (marginTop + safeHeight));
-                    }
-
-                    // Left area (if any)
-                    if (marginLeft > 0) {
-                        ctx.fillRect(0, 0, marginLeft, dimensions.height);
-                    }
-
-                    // Right area (if any)
-                    if (marginLeft + safeWidth < dimensions.width) {
-                        ctx.fillRect(marginLeft + safeWidth, 0, dimensions.width - (marginLeft + safeWidth), dimensions.height);
-                    }
-
-                    // Draw red dashed border around safe area
-                    ctx.strokeStyle = '#ff0000';
-                    ctx.lineWidth = 3;
-                    ctx.setLineDash([10, 5]);
-                    ctx.strokeRect(marginLeft, marginTop, safeWidth, safeHeight);
-
-                    // Add label with background for better visibility
-                    ctx.setLineDash([]);
-                    ctx.font = 'bold 24px Arial';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-
-                    const labelText = '3:4 Safe Area';
-                    const textMetrics = ctx.measureText(labelText);
-                    const textWidth = textMetrics.width;
-                    const textHeight = 24; // font size
-                    const padding = 8;
-
-                    // Calculate label position (center of background box)
-                    const labelY = marginTop > 30 ? marginTop - 20 : marginTop + 20;
-
-                    // Draw background rectangle
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                    ctx.fillRect(
-                        dimensions.width / 2 - textWidth / 2 - padding,
-                        labelY - textHeight / 2 - padding,
-                        textWidth + padding * 2,
-                        textHeight + padding * 2
-                    );
-
-                    // Draw white text on top (centered in the box)
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fillText(labelText, dimensions.width / 2, labelY);
-
-                    ctx.restore();
-                }
-
                 // Draw text elements (calculate positions from bottom to top with margins)
-                const bottomMargin = aspectRatio === '9:16' ? 100 : 25;
+                const bottomMargin = aspectRatio === '9:16' ? 106 : 31;
                 const isCustomOverlay = selectedOverlay === 'custom';
                 let currentBottomY = dimensions.height - bottomMargin;
                 const textBoxHeights = [];
@@ -581,11 +600,18 @@ export default function App() {
                 // First pass: calculate all text box heights
                 textElements.forEach((el, index) => {
                     // Use global settings if not using custom settings
-                    const fontSize = el.useCustomSettings ? (el.fontSize || 40) : globalFontSize;
+                    const rawFontSize = el.useCustomSettings ? el.fontSize : globalFontSize;
+                    const fontSize = (typeof rawFontSize === 'number' && !isNaN(rawFontSize) && rawFontSize > 0) ? rawFontSize : 40;
                     const fontFamily = el.useCustomSettings ? (el.fontFamily || 'Helvetica Neue') : globalFontFamily;
                     const fontStyle = el.useCustomSettings ? (el.fontStyle || 'normal') : globalFontStyle;
                     const fontWeight = el.useCustomSettings ? (el.fontWeight || 'normal') : globalFontWeight;
                     const textCase = el.useCustomSettings ? (el.textCase || 'default') : globalTextCase;
+
+                    // Skip calculation if fontSize is invalid
+                    if (typeof rawFontSize !== 'number' || isNaN(rawFontSize) || rawFontSize <= 0) {
+                        textBoxHeights.push({ height: 0, marginBottom: 0 });
+                        return;
+                    }
 
                     ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
                     const lineHeight = fontSize * 1.2;
@@ -646,7 +672,8 @@ export default function App() {
                 for (let index = 0; index < textElements.length; index++) {
                     const el = textElements[index];
                     // Use global settings if not using custom settings
-                    const fontSize = el.useCustomSettings ? (el.fontSize || 40) : globalFontSize;
+                    const rawFontSize = el.useCustomSettings ? el.fontSize : globalFontSize;
+                    const fontSize = (typeof rawFontSize === 'number' && !isNaN(rawFontSize) && rawFontSize > 0) ? rawFontSize : 40;
                     const fontFamily = el.useCustomSettings ? (el.fontFamily || 'Helvetica Neue') : globalFontFamily;
                     const fontStyle = el.useCustomSettings ? (el.fontStyle || 'normal') : globalFontStyle;
                     const fontWeight = el.useCustomSettings ? (el.fontWeight || 'normal') : globalFontWeight;
@@ -654,6 +681,11 @@ export default function App() {
                     const textAlign = el.useCustomSettings ? (el.textAlign || 'left') : globalTextAlign;
                     const justify = el.useCustomSettings ? (el.justify || false) : globalJustify;
                     const color = el.useCustomSettings ? (el.color || '#ffffff') : globalColor;
+
+                    // Skip rendering if fontSize is invalid
+                    if (typeof rawFontSize !== 'number' || isNaN(rawFontSize) || rawFontSize <= 0) {
+                        continue;
+                    }
 
                     ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
                     const maxWidth = el.maxWidth || dimensions.width - 100;
@@ -803,7 +835,7 @@ export default function App() {
 
                     // Only the top textbox (last index) should have square top corners with Custom overlay
                     const isTopTextbox = index === textElements.length - 1;
-                    if (isCustomOverlay && isTopTextbox) {
+                    if (showBanner && isCustomOverlay && isTopTextbox) {
                         // Square top corners, rounded bottom corners
                         ctx.moveTo(rectX, rectY);
                         ctx.lineTo(rectX + textBoxWidth, rectY);
@@ -835,7 +867,7 @@ export default function App() {
                     const innerRadius = borderRadius - strokeInset;
                     ctx.beginPath();
 
-                    if (isCustomOverlay && isTopTextbox) {
+                    if (showBanner && isCustomOverlay && isTopTextbox) {
                         // Square top corners, rounded bottom corners
                         ctx.moveTo(rectX + strokeInset, rectY + strokeInset);
                         ctx.lineTo(rectX + textBoxWidth - strokeInset, rectY + strokeInset);
@@ -904,7 +936,7 @@ export default function App() {
                                 ctx.textAlign = 'left';
 
                                 // Render text with emoji support
-                                const width = await renderTextWithEmoji(seg.text, currentX, lineY, fontSize);
+                                const width = await renderTextWithEmoji(seg.text, currentX, lineY, fontSize, fontFamily);
                                 currentX += width;
                             }
                         }
@@ -914,26 +946,32 @@ export default function App() {
                 }
 
                 // Draw tag banner on top of the topmost textbox (when Custom overlay is selected)
-                if (isCustomOverlay && textElements.length > 0) {
-                    // Get the topmost textbox position (last one rendered)
-                    const topmostIndex = textElements.length - 1;
+                if (showBanner && isCustomOverlay && textElements.length > 0) {
+                    // Validate banner values before rendering
+                    const validBannerFontSize = typeof bannerFontSize === 'number' && !isNaN(bannerFontSize) && bannerFontSize > 0;
+                    const validBannerLetterSpacing = typeof bannerLetterSpacing === 'number' && !isNaN(bannerLetterSpacing);
+                    const validBannerOpacity = typeof bannerOpacity === 'number' && !isNaN(bannerOpacity);
 
-                    // Calculate the position from the textBoxHeights
-                    let bannerY = dimensions.height - bottomMargin;
-                    for (let i = 0; i < textElements.length; i++) {
-                        bannerY -= textBoxHeights[i].height;
-                        if (i < textElements.length - 1) {
-                            bannerY -= textBoxMargin;
+                    if (validBannerFontSize && validBannerLetterSpacing && validBannerOpacity) {
+                        // Get the topmost textbox position (last one rendered)
+                        const topmostIndex = textElements.length - 1;
+
+                        // Calculate the position from the textBoxHeights
+                        let bannerY = dimensions.height - bottomMargin;
+                        for (let i = 0; i < textElements.length; i++) {
+                            bannerY -= textBoxHeights[i].height;
+                            if (i < textElements.length - 1) {
+                                bannerY -= textBoxMargin;
+                            }
                         }
-                    }
 
-                    const bannerWidth = 965;
-                    const bannerHeight = 89;
-                    const bannerX = dimensions.width / 2 - bannerWidth / 2;
-                    const bannerTopY = bannerY - bannerHeight;
+                        const bannerWidth = 965;
+                        const bannerHeight = 89;
+                        const bannerX = dimensions.width / 2 - bannerWidth / 2;
+                        const bannerTopY = bannerY - bannerHeight + 1;
 
-                    // Draw banner rectangle with color fill and rounded top corners
-                    ctx.save();
+                        // Draw banner rectangle with color fill and rounded top corners
+                        ctx.save();
                     const bannerTopRadius = 35.5;
 
                     // Convert hex color to rgba with opacity
@@ -957,17 +995,19 @@ export default function App() {
                     ctx.closePath();
                     ctx.fill();
 
-                    // Draw 2px white outside border
+                    // Draw 2px white inside stroke (same as text boxes)
                     ctx.strokeStyle = '#ffffff';
                     ctx.lineWidth = 2;
+                    const bannerStrokeInset = 1;
+                    const bannerInnerRadius = bannerTopRadius - bannerStrokeInset;
                     ctx.beginPath();
-                    ctx.moveTo(bannerX + bannerTopRadius, bannerTopY);
-                    ctx.lineTo(bannerX + bannerWidth - bannerTopRadius, bannerTopY);
-                    ctx.arcTo(bannerX + bannerWidth, bannerTopY, bannerX + bannerWidth, bannerTopY + bannerTopRadius, bannerTopRadius);
-                    ctx.lineTo(bannerX + bannerWidth, bannerTopY + bannerHeight);
-                    ctx.lineTo(bannerX, bannerTopY + bannerHeight);
-                    ctx.lineTo(bannerX, bannerTopY + bannerTopRadius);
-                    ctx.arcTo(bannerX, bannerTopY, bannerX + bannerTopRadius, bannerTopY, bannerTopRadius);
+                    ctx.moveTo(bannerX + bannerStrokeInset + bannerInnerRadius, bannerTopY + bannerStrokeInset);
+                    ctx.lineTo(bannerX + bannerWidth - bannerStrokeInset - bannerInnerRadius, bannerTopY + bannerStrokeInset);
+                    ctx.arcTo(bannerX + bannerWidth - bannerStrokeInset, bannerTopY + bannerStrokeInset, bannerX + bannerWidth - bannerStrokeInset, bannerTopY + bannerStrokeInset + bannerInnerRadius, bannerInnerRadius);
+                    ctx.lineTo(bannerX + bannerWidth - bannerStrokeInset, bannerTopY + bannerHeight);
+                    ctx.lineTo(bannerX + bannerStrokeInset, bannerTopY + bannerHeight);
+                    ctx.lineTo(bannerX + bannerStrokeInset, bannerTopY + bannerStrokeInset + bannerInnerRadius);
+                    ctx.arcTo(bannerX + bannerStrokeInset, bannerTopY + bannerStrokeInset, bannerX + bannerStrokeInset + bannerInnerRadius, bannerTopY + bannerStrokeInset, bannerInnerRadius);
                     ctx.closePath();
                     ctx.stroke();
 
@@ -1041,7 +1081,11 @@ export default function App() {
                                     const emojiImg = await loadEmojiImage(seg.codePoint);
                                     const emojiSize = bannerFontSize;
                                     // Banner uses textBaseline 'middle', so center the emoji vertically
-                                    ctx.drawImage(emojiImg, currentX, textY - emojiSize / 2, emojiSize, emojiSize);
+                                    // Singing Sans specific offset
+                                    let bannerEmojiOffset = 0;
+                                    if (bannerFontFamily === 'Singing Sans') bannerEmojiOffset = -0.10;
+                                    const bannerEmojiY = textY - emojiSize / 2 + bannerFontSize * bannerEmojiOffset;
+                                    ctx.drawImage(emojiImg, currentX, bannerEmojiY, emojiSize, emojiSize);
                                     currentX += emojiSize + letterSpacingPx;
                                 } catch (error) {
                                     // Skip on error
@@ -1054,17 +1098,106 @@ export default function App() {
                     await renderBannerText();
 
                     ctx.restore();
+                    }
+                }
+
+                // Draw 3:4 safe area centered on all aspect ratios if enabled (only for display, not export)
+                // This is drawn LAST so it overlays everything
+                if (showSafeMargins && includeSafeMargins) {
+                    ctx.save();
+
+                    // 3:4 safe area (1080x1440) - centered on the canvas
+                    // Scale to fit within canvas if necessary
+                    const targetRatio = 3 / 4; // width/height for 3:4
+                    const canvasRatio = dimensions.width / dimensions.height;
+
+                    let safeWidth, safeHeight, marginLeft, marginTop;
+
+                    if (canvasRatio > targetRatio) {
+                        // Canvas is wider than 3:4, fit by height
+                        safeHeight = dimensions.height;
+                        safeWidth = safeHeight * targetRatio;
+                        marginLeft = (dimensions.width - safeWidth) / 2;
+                        marginTop = 0;
+                    } else {
+                        // Canvas is taller than 3:4, fit by width
+                        safeWidth = dimensions.width;
+                        safeHeight = safeWidth / targetRatio;
+                        marginLeft = 0;
+                        marginTop = (dimensions.height - safeHeight) / 2;
+                    }
+
+                    // Draw semi-transparent black overlay on areas outside safe area
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+
+                    // Top area (if any)
+                    if (marginTop > 0) {
+                        ctx.fillRect(0, 0, dimensions.width, marginTop);
+                    }
+
+                    // Bottom area (if any)
+                    if (marginTop + safeHeight < dimensions.height) {
+                        ctx.fillRect(0, marginTop + safeHeight, dimensions.width, dimensions.height - (marginTop + safeHeight));
+                    }
+
+                    // Left area (if any)
+                    if (marginLeft > 0) {
+                        ctx.fillRect(0, 0, marginLeft, dimensions.height);
+                    }
+
+                    // Right area (if any)
+                    if (marginLeft + safeWidth < dimensions.width) {
+                        ctx.fillRect(marginLeft + safeWidth, 0, dimensions.width - (marginLeft + safeWidth), dimensions.height);
+                    }
+
+                    // Draw red dashed border around safe area
+                    ctx.strokeStyle = '#ff0000';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([10, 5]);
+                    ctx.strokeRect(marginLeft, marginTop, safeWidth, safeHeight);
+
+                    // Add label with background for better visibility
+                    ctx.setLineDash([]);
+                    ctx.font = 'bold 24px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+
+                    const labelText = '3:4 Safe Area';
+                    const textMetrics = ctx.measureText(labelText);
+                    const textWidth = textMetrics.width;
+                    const textHeight = 24; // font size
+                    const padding = 8;
+
+                    // Calculate label position (center of background box)
+                    const labelY = marginTop > 30 ? marginTop - 20 : marginTop + 20;
+
+                    // Draw background rectangle
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                    ctx.fillRect(
+                        dimensions.width / 2 - textWidth / 2 - padding,
+                        labelY - textHeight / 2 - padding,
+                        textWidth + padding * 2,
+                        textHeight + padding * 2
+                    );
+
+                    // Draw white text on top (centered in the box)
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(labelText, dimensions.width / 2, labelY);
+
+                    ctx.restore();
                 }
             };
 
             useEffect(() => {
-                renderCanvas().catch(err => console.error('Render error:', err));
-            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation, textBoxMargin, globalFontSize, globalColor, globalFontFamily, globalFontWeight, globalFontStyle, globalTextAlign, globalJustify, globalTextCase, bannerText, bannerLetterSpacing, bannerColor, bannerFontSize, bannerFontFamily, bannerFontWeight, bannerFontStyle, bannerTextAlign, bannerTextCase, bannerOpacity]);
+                if (fontsLoaded) {
+                    renderCanvas().catch(err => console.error('Render error:', err));
+                }
+            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation, textBoxMargin, globalFontSize, globalColor, globalFontFamily, globalFontWeight, globalFontStyle, globalTextAlign, globalJustify, globalTextCase, bannerText, bannerLetterSpacing, bannerColor, bannerFontSize, bannerFontFamily, bannerFontWeight, bannerFontStyle, bannerTextAlign, bannerTextCase, bannerOpacity, showBanner, fontsLoaded]);
 
             // Reposition text elements when aspect ratio changes
             useEffect(() => {
                 setTextElements(prev => prev.map(el => {
-                    const bottomMargin = aspectRatio === '9:16' ? 100 : 25;
+                    const bottomMargin = aspectRatio === '9:16' ? 106 : 31;
                     const yPosition = dimensions.height - bottomMargin;
                     const xPosition = dimensions.width / 2;
 
@@ -1192,9 +1325,7 @@ export default function App() {
 
             return (
                 <div className="min-h-screen bg-gray-50">
-                    <div className="max-w-7xl mx-auto">
-                        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 p-4">Instagram Template Editor</h1>
-
+                    <div className="max-w-7xl mx-auto py-4">
                         <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:px-4">
                             {/* Canvas - Always visible */}
                             <div className="lg:col-span-2 canvas-wrapper">
@@ -1232,7 +1363,7 @@ export default function App() {
 
                                     <div
                                         ref={containerRef}
-                                        className="canvas-container relative mx-auto bg-gray-100 rounded-lg overflow-hidden"
+                                        className="canvas-container relative mx-auto bg-gray-600 rounded-lg overflow-hidden"
                                         style={{ 
                                             width: maxCanvasWidth, 
                                             height: canvasHeight,
@@ -1677,35 +1808,6 @@ export default function App() {
                                         </div>
                                     </div>
 
-                                    {/* Additional Overlays - Desktop: always show, Mobile: show in 'overlays' tab */}
-                                    <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
-                                        <h2 className="text-base md:text-lg font-semibold mb-2">Overlay Type</h2>
-                                        <div className="space-y-3">
-                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
-                                                <input
-                                                    type="radio"
-                                                    name="overlayType"
-                                                    value="regular"
-                                                    checked={selectedOverlay === 'regular'}
-                                                    onChange={(e) => setSelectedOverlay(e.target.value)}
-                                                    className="w-5 h-5 text-blue-600"
-                                                />
-                                                <span className="text-sm md:text-base font-medium text-gray-700">Regular</span>
-                                            </label>
-                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
-                                                <input
-                                                    type="radio"
-                                                    name="overlayType"
-                                                    value="custom"
-                                                    checked={selectedOverlay === 'custom'}
-                                                    onChange={(e) => setSelectedOverlay(e.target.value)}
-                                                    className="w-5 h-5 text-blue-600"
-                                                />
-                                                <span className="text-sm md:text-base font-medium text-gray-700">Custom</span>
-                                            </label>
-                                        </div>
-                                    </div>
-
                                     {/* Overlay Color - Desktop: always show, Mobile: show in 'overlays' tab */}
                                     <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
                                         <h2 className="text-base md:text-lg font-semibold mb-2">Overlay Color</h2>
@@ -1735,36 +1837,128 @@ export default function App() {
                                         </div>
                                     </div>
 
-                                    {/* Tag Banner Controls - Only show when Custom overlay is selected */}
-                                    {selectedOverlay === 'custom' && (
-                                        <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
-                                            <h2 className="text-base md:text-lg font-semibold mb-2">Tag Banner</h2>
+                                    {/* Tag Banner Controls */}
+                                    <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h2 className="text-base md:text-lg font-semibold">Tag Banner</h2>
+                                            <button
+                                                onClick={() => setShowBanner(!showBanner)}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                    showBanner ? 'bg-blue-600' : 'bg-gray-300'
+                                                }`}
+                                            >
+                                                <span
+                                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                        showBanner ? 'translate-x-6' : 'translate-x-1'
+                                                    }`}
+                                                />
+                                            </button>
+                                        </div>
 
-                                            <div className="space-y-3">
-                                                {/* Banner Text */}
+                                        <div className="space-y-3">
+                                                {/* Banner Preset */}
                                                 <div>
-                                                    <label className="text-xs text-gray-600 mb-1 block">Banner Text</label>
-                                                    <input
-                                                        type="text"
-                                                        value={bannerText}
-                                                        onChange={(e) => setBannerText(e.target.value)}
+                                                    <label className="text-xs text-gray-600 mb-1 block">Preset</label>
+                                                    <select
+                                                        value={selectedBannerPreset}
+                                                        onChange={(e) => handleBannerPresetChange(e.target.value)}
                                                         className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
-                                                    />
+                                                    >
+                                                        <option value="breaking">🔴 Breaking</option>
+                                                        <option value="custom">Custom</option>
+                                                        <optgroup label="Countries">
+                                                            <option value="albania">🇦🇱 Albania</option>
+                                                            <option value="andorra">🇦🇩 Andorra</option>
+                                                            <option value="armenia">🇦🇲 Armenia</option>
+                                                            <option value="australia">🇦🇺 Australia</option>
+                                                            <option value="austria">🇦🇹 Austria</option>
+                                                            <option value="azerbaijan">🇦🇿 Azerbaijan</option>
+                                                            <option value="belarus">🇧🇾 Belarus</option>
+                                                            <option value="belgium">🇧🇪 Belgium</option>
+                                                            <option value="bosnia">🇧🇦 Bosnia & Herzegovina</option>
+                                                            <option value="bulgaria">🇧🇬 Bulgaria</option>
+                                                            <option value="croatia">🇭🇷 Croatia</option>
+                                                            <option value="cyprus">🇨🇾 Cyprus</option>
+                                                            <option value="czechia">🇨🇿 Czechia</option>
+                                                            <option value="denmark">🇩🇰 Denmark</option>
+                                                            <option value="estonia">🇪🇪 Estonia</option>
+                                                            <option value="finland">🇫🇮 Finland</option>
+                                                            <option value="france">🇫🇷 France</option>
+                                                            <option value="georgia">🇬🇪 Georgia</option>
+                                                            <option value="germany">🇩🇪 Germany</option>
+                                                            <option value="greece">🇬🇷 Greece</option>
+                                                            <option value="hungary">🇭🇺 Hungary</option>
+                                                            <option value="iceland">🇮🇸 Iceland</option>
+                                                            <option value="ireland">🇮🇪 Ireland</option>
+                                                            <option value="israel">🇮🇱 Israel</option>
+                                                            <option value="italy">🇮🇹 Italy</option>
+                                                            <option value="latvia">🇱🇻 Latvia</option>
+                                                            <option value="lithuania">🇱🇹 Lithuania</option>
+                                                            <option value="luxembourg">🇱🇺 Luxembourg</option>
+                                                            <option value="malta">🇲🇹 Malta</option>
+                                                            <option value="moldova">🇲🇩 Moldova</option>
+                                                            <option value="monaco">🇲🇨 Monaco</option>
+                                                            <option value="montenegro">🇲🇪 Montenegro</option>
+                                                            <option value="morocco">🇲🇦 Morocco</option>
+                                                            <option value="netherlands">🇳🇱 Netherlands</option>
+                                                            <option value="northmacedonia">🇲🇰 North Macedonia</option>
+                                                            <option value="norway">🇳🇴 Norway</option>
+                                                            <option value="poland">🇵🇱 Poland</option>
+                                                            <option value="portugal">🇵🇹 Portugal</option>
+                                                            <option value="romania">🇷🇴 Romania</option>
+                                                            <option value="russia">🇷🇺 Russia</option>
+                                                            <option value="sanmarino">🇸🇲 San Marino</option>
+                                                            <option value="serbia">🇷🇸 Serbia</option>
+                                                            <option value="slovakia">🇸🇰 Slovakia</option>
+                                                            <option value="slovenia">🇸🇮 Slovenia</option>
+                                                            <option value="spain">🇪🇸 Spain</option>
+                                                            <option value="sweden">🇸🇪 Sweden</option>
+                                                            <option value="switzerland">🇨🇭 Switzerland</option>
+                                                            <option value="turkiye">🇹🇷 Türkiye</option>
+                                                            <option value="ukraine">🇺🇦 Ukraine</option>
+                                                            <option value="uk">🇬🇧 United Kingdom</option>
+                                                        </optgroup>
+                                                    </select>
                                                 </div>
+
+                                                {/* Banner Text - Only show for Custom preset */}
+                                                {selectedBannerPreset === 'custom' && (
+                                                    <div>
+                                                        <label className="text-xs text-gray-600 mb-1 block">Banner Text</label>
+                                                        <input
+                                                            type="text"
+                                                            value={bannerText}
+                                                            onChange={(e) => {
+                                                                setBannerText(e.target.value);
+                                                                setSelectedBannerPreset('custom');
+                                                            }}
+                                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                                        />
+                                                    </div>
+                                                )}
 
                                                 {/* Letter Spacing and Color */}
                                                 <div className="grid grid-cols-2 gap-2">
                                                     <div>
                                                         <label className="text-xs text-gray-600 mb-1 block">Letter Spacing (%)</label>
                                                         <input
-                                                            type="number"
-                                                            value={bannerLetterSpacing * 100}
+                                                            type="text"
+                                                            value={bannerLetterSpacing === '' ? '' : (typeof bannerLetterSpacing === 'number' ? bannerLetterSpacing * 100 : '')}
                                                             onChange={(e) => {
-                                                                const val = parseFloat(e.target.value);
-                                                                if (!isNaN(val)) setBannerLetterSpacing(val / 100);
+                                                                const input = e.target.value;
+                                                                if (input === '') {
+                                                                    setBannerLetterSpacing('');
+                                                                } else {
+                                                                    const val = parseFloat(input);
+                                                                    setBannerLetterSpacing(isNaN(val) ? '' : val / 100);
+                                                                }
+                                                                setSelectedBannerPreset('custom');
                                                             }}
-                                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
-                                                            step="1"
+                                                            className={`w-full p-2 border-2 rounded text-xs md:text-sm ${
+                                                                bannerLetterSpacing === '' || typeof bannerLetterSpacing !== 'number'
+                                                                    ? 'border-red-600 bg-red-100'
+                                                                    : 'border-gray-300'
+                                                            }`}
                                                         />
                                                     </div>
                                                     <div>
@@ -1772,7 +1966,10 @@ export default function App() {
                                                         <input
                                                             type="color"
                                                             value={bannerColor}
-                                                            onChange={(e) => setBannerColor(e.target.value)}
+                                                            onChange={(e) => {
+                                                                setBannerColor(e.target.value);
+                                                                setSelectedBannerPreset('custom');
+                                                            }}
                                                             className="w-full h-10 border border-gray-300 rounded cursor-pointer"
                                                         />
                                                     </div>
@@ -1780,12 +1977,34 @@ export default function App() {
 
                                                 {/* Transparency */}
                                                 <div>
-                                                    <label className="text-xs text-gray-600 mb-1 block">Transparency ({Math.round(bannerOpacity * 100)}%)</label>
+                                                    <label className="text-xs text-gray-600 mb-1 block">Transparency</label>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <input
+                                                            type="text"
+                                                            value={bannerOpacity === '' ? '' : (typeof bannerOpacity === 'number' ? Math.round(bannerOpacity * 100) : '')}
+                                                            onChange={(e) => {
+                                                                const input = e.target.value;
+                                                                if (input === '') {
+                                                                    setBannerOpacity('');
+                                                                } else {
+                                                                    const val = parseFloat(input);
+                                                                    setBannerOpacity(isNaN(val) ? '' : val / 100);
+                                                                }
+                                                            }}
+                                                            className={`w-16 px-2 py-1 text-xs border-2 rounded ${
+                                                                bannerOpacity === '' || typeof bannerOpacity !== 'number'
+                                                                    ? 'border-red-600 bg-red-100'
+                                                                    : 'border-gray-300'
+                                                            }`}
+                                                        />
+                                                        <span className="text-xs text-gray-500">%</span>
+                                                    </div>
                                                     <input
                                                         type="range"
                                                         min="0"
                                                         max="100"
-                                                        value={bannerOpacity * 100}
+                                                        step="1"
+                                                        value={typeof bannerOpacity === 'number' ? bannerOpacity * 100 : 0}
                                                         onChange={(e) => {
                                                             const val = parseFloat(e.target.value);
                                                             if (!isNaN(val)) setBannerOpacity(val / 100);
@@ -1799,23 +2018,38 @@ export default function App() {
                                                     <div>
                                                         <label className="text-xs text-gray-600 mb-1 block">Font Size</label>
                                                         <input
-                                                            type="number"
-                                                            value={bannerFontSize}
+                                                            type="text"
+                                                            value={bannerFontSize === '' ? '' : (typeof bannerFontSize === 'number' ? bannerFontSize : '')}
                                                             onChange={(e) => {
-                                                                const val = parseInt(e.target.value);
-                                                                if (!isNaN(val)) setBannerFontSize(val);
+                                                                const input = e.target.value;
+                                                                if (input === '') {
+                                                                    setBannerFontSize('');
+                                                                } else {
+                                                                    const val = parseInt(input);
+                                                                    setBannerFontSize(isNaN(val) ? '' : val);
+                                                                }
                                                             }}
-                                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                                            className={`w-full p-2 border-2 rounded text-xs md:text-sm ${
+                                                                bannerFontSize === '' || typeof bannerFontSize !== 'number'
+                                                                    ? 'border-red-600 bg-red-100'
+                                                                    : 'border-gray-300'
+                                                            }`}
                                                         />
                                                     </div>
                                                     <div>
                                                         <label className="text-xs text-gray-600 mb-1 block">Font</label>
                                                         <select
                                                             value={bannerFontFamily}
-                                                            onChange={(e) => setBannerFontFamily(e.target.value)}
+                                                            onChange={(e) => {
+                                                                setBannerFontFamily(e.target.value);
+                                                                if (e.target.value === 'Singing Sans') {
+                                                                    setBannerTextCase('default');
+                                                                }
+                                                            }}
                                                             className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
                                                         >
                                                             <option value="Helvetica Neue">Helvetica Neue</option>
+                                                            <option value="Singing Sans">Singing Sans</option>
                                                             <option value="Arial">Arial</option>
                                                             <option value="Arial Black">Arial Black</option>
                                                             <option value="Impact">Impact</option>
@@ -1859,7 +2093,10 @@ export default function App() {
                                                         <label className="text-xs text-gray-600 mb-1 block">Align</label>
                                                         <select
                                                             value={bannerTextAlign}
-                                                            onChange={(e) => setBannerTextAlign(e.target.value)}
+                                                            onChange={(e) => {
+                                                                setBannerTextAlign(e.target.value);
+                                                                setSelectedBannerPreset('custom');
+                                                            }}
                                                             className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
                                                         >
                                                             <option value="left">Left</option>
@@ -1883,8 +2120,7 @@ export default function App() {
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
+                                    </div>
 
                                     {/* Text Controls - Desktop: always show, Mobile: show in 'text' tab */}
                                     <div className={`${activeTab === 'text' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
@@ -1957,13 +2193,22 @@ export default function App() {
                                                         <div>
                                                             <label className="text-xs text-gray-600">Size</label>
                                                             <input
-                                                                type="number"
-                                                                value={el.fontSize}
+                                                                type="text"
+                                                                value={el.fontSize === '' ? '' : (typeof el.fontSize === 'number' ? el.fontSize : '')}
                                                                 onChange={(e) => {
-                                                                    const val = parseInt(e.target.value);
-                                                                    if (!isNaN(val)) updateTextElement(el.id, { fontSize: val });
+                                                                    const input = e.target.value;
+                                                                    if (input === '') {
+                                                                        updateTextElement(el.id, { fontSize: '' });
+                                                                    } else {
+                                                                        const val = parseInt(input);
+                                                                        updateTextElement(el.id, { fontSize: isNaN(val) ? '' : val });
+                                                                    }
                                                                 }}
-                                                                className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                                className={`w-full p-1 border-2 rounded text-xs md:text-sm ${
+                                                                    el.fontSize === '' || typeof el.fontSize !== 'number'
+                                                                        ? 'border-red-600 bg-red-100'
+                                                                        : 'border-gray-300'
+                                                                }`}
                                                             />
                                                         </div>
                                                         <div>
@@ -1978,10 +2223,17 @@ export default function App() {
                                                     </div>
                                                     <select
                                                         value={el.fontFamily}
-                                                        onChange={(e) => updateTextElement(el.id, { fontFamily: e.target.value })}
+                                                        onChange={(e) => {
+                                                            const updates = { fontFamily: e.target.value };
+                                                            if (e.target.value === 'Singing Sans') {
+                                                                updates.textCase = 'default';
+                                                            }
+                                                            updateTextElement(el.id, updates);
+                                                        }}
                                                         className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm mb-2"
                                                     >
                                                         <option value="Helvetica Neue">Helvetica Neue</option>
+                                                        <option value="Singing Sans">Singing Sans</option>
                                                         <option value="Arial">Arial</option>
                                                         <option value="Helvetica">Helvetica</option>
                                                         <option value="Georgia">Georgia</option>
@@ -2151,13 +2403,22 @@ export default function App() {
                                                 <div>
                                                     <label className="text-xs text-gray-600">Size</label>
                                                     <input
-                                                        type="number"
-                                                        value={globalFontSize}
+                                                        type="text"
+                                                        value={globalFontSize === '' ? '' : (typeof globalFontSize === 'number' ? globalFontSize : '')}
                                                         onChange={(e) => {
-                                                            const val = parseInt(e.target.value);
-                                                            if (!isNaN(val)) setGlobalFontSize(val);
+                                                            const input = e.target.value;
+                                                            if (input === '') {
+                                                                setGlobalFontSize('');
+                                                            } else {
+                                                                const val = parseInt(input);
+                                                                setGlobalFontSize(isNaN(val) ? '' : val);
+                                                            }
                                                         }}
-                                                        className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                        className={`w-full p-1 border-2 rounded text-xs md:text-sm ${
+                                                            globalFontSize === '' || typeof globalFontSize !== 'number'
+                                                                ? 'border-red-600 bg-red-100'
+                                                                : 'border-gray-300'
+                                                        }`}
                                                     />
                                                 </div>
                                                 <div>
@@ -2175,10 +2436,16 @@ export default function App() {
                                                 <label className="text-xs text-gray-600">Font Family</label>
                                                 <select
                                                     value={globalFontFamily}
-                                                    onChange={(e) => setGlobalFontFamily(e.target.value)}
+                                                    onChange={(e) => {
+                                                        setGlobalFontFamily(e.target.value);
+                                                        if (e.target.value === 'Singing Sans') {
+                                                            setGlobalTextCase('default');
+                                                        }
+                                                    }}
                                                     className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
                                                 >
                                                     <option value="Helvetica Neue">Helvetica Neue</option>
+                                                    <option value="Singing Sans">Singing Sans</option>
                                                     <option value="Arial">Arial</option>
                                                     <option value="Helvetica">Helvetica</option>
                                                     <option value="Georgia">Georgia</option>
@@ -2327,8 +2594,12 @@ export default function App() {
                                                 step="10"
                                                 value={textBoxMargin}
                                                 onChange={(e) => {
-                                                    const val = parseInt(e.target.value);
-                                                    if (!isNaN(val)) setTextBoxMargin(val);
+                                                    if (e.target.value === '') {
+                                                        setTextBoxMargin(0);
+                                                    } else {
+                                                        const val = parseInt(e.target.value);
+                                                        if (!isNaN(val)) setTextBoxMargin(val);
+                                                    }
                                                 }}
                                                 className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
                                             />
