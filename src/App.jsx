@@ -355,7 +355,10 @@ export default function App() {
                 // Handle single touch/mouse drag only if not already pinching
                 if (e.touches && e.touches.length > 2) return;
 
-                e.preventDefault();
+                // REMOVED preventDefault - it was breaking React's event system on mobile
+                // This allows buttons to remain responsive after canvas interactions
+                // e.preventDefault();
+
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 setIsDragging(true);
