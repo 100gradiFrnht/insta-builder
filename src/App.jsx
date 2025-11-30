@@ -125,6 +125,7 @@ export default function App() {
             const [bannerOpacity, setBannerOpacity] = useState(0.6);
             const [selectedBannerPreset, setSelectedBannerPreset] = useState('custom');
             const [showBanner, setShowBanner] = useState(true);
+            const [showOverlay, setShowOverlay] = useState(true);
 
             const [imageScale, setImageScale] = useState(1);
             const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 });
@@ -647,18 +648,21 @@ export default function App() {
                     ctx.restore();
                 }
 
-                // Draw selected additional overlay for current aspect ratio
-                const overlayKey = `${selectedOverlay}-${overlayColor}-${aspectRatio}`;
-                const currentAdditionalOverlay = additionalOverlays[overlayKey];
-                if (currentAdditionalOverlay) {
-                    ctx.drawImage(currentAdditionalOverlay, 0, 0, dimensions.width, dimensions.height);
-                }
+                // Draw overlays only if enabled
+                if (showOverlay) {
+                    // Draw selected additional overlay for current aspect ratio
+                    const overlayKey = `${selectedOverlay}-${overlayColor}-${aspectRatio}`;
+                    const currentAdditionalOverlay = additionalOverlays[overlayKey];
+                    if (currentAdditionalOverlay) {
+                        ctx.drawImage(currentAdditionalOverlay, 0, 0, dimensions.width, dimensions.height);
+                    }
 
-                // Draw permanent overlay for current aspect ratio (always on top)
-                const permanentOverlayKey = `${overlayColor}-${aspectRatio}`;
-                const currentPermanentOverlay = permanentOverlays[permanentOverlayKey];
-                if (currentPermanentOverlay) {
-                    ctx.drawImage(currentPermanentOverlay, 0, 0, dimensions.width, dimensions.height);
+                    // Draw permanent overlay for current aspect ratio
+                    const permanentOverlayKey = `${overlayColor}-${aspectRatio}`;
+                    const currentPermanentOverlay = permanentOverlays[permanentOverlayKey];
+                    if (currentPermanentOverlay) {
+                        ctx.drawImage(currentPermanentOverlay, 0, 0, dimensions.width, dimensions.height);
+                    }
                 }
 
                 // Draw text elements (calculate positions from bottom to top with margins)
@@ -1262,7 +1266,7 @@ export default function App() {
                 if (fontsLoaded) {
                     renderCanvas().catch(err => console.error('Render error:', err));
                 }
-            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation, textBoxMargin, globalFontSize, globalColor, globalFontFamily, globalFontWeight, globalFontStyle, globalTextAlign, globalJustify, globalTextCase, bannerText, bannerLetterSpacing, bannerColor, bannerFontSize, bannerFontFamily, bannerFontWeight, bannerFontStyle, bannerTextAlign, bannerTextCase, bannerOpacity, showBanner, fontsLoaded]);
+            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation, textBoxMargin, globalFontSize, globalColor, globalFontFamily, globalFontWeight, globalFontStyle, globalTextAlign, globalJustify, globalTextCase, bannerText, bannerLetterSpacing, bannerColor, bannerFontSize, bannerFontFamily, bannerFontWeight, bannerFontStyle, bannerTextAlign, bannerTextCase, bannerOpacity, showBanner, showOverlay, fontsLoaded]);
 
             // Reposition text elements when aspect ratio changes
             useEffect(() => {
@@ -1932,7 +1936,21 @@ export default function App() {
 
                                     {/* Overlay Color - Desktop: always show, Mobile: show in 'overlays' tab */}
                                     <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
-                                        <h2 className="text-base md:text-lg font-semibold mb-2">Overlay Color</h2>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h2 className="text-base md:text-lg font-semibold">Overlay</h2>
+                                            <button
+                                                onClick={() => setShowOverlay(!showOverlay)}
+                                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                                    showOverlay ? 'bg-blue-600' : 'bg-gray-300'
+                                                }`}
+                                            >
+                                                <span
+                                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                                        showOverlay ? 'translate-x-6' : 'translate-x-1'
+                                                    }`}
+                                                />
+                                            </button>
+                                        </div>
                                         <div className="space-y-3">
                                             <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
                                                 <input
