@@ -340,12 +340,15 @@ export default function App() {
             };
 
             const handleImageDragStart = (e) => {
+                console.log('🎯 DRAG START', { touches: e.touches?.length, type: e.type });
+
                 // Handle pinch zoom - detect two fingers
                 if (e.touches && e.touches.length === 2) {
                     e.preventDefault();
                     const distance = getTouchDistance(e.touches);
                     setLastTouchDistance(distance);
                     setIsDragging(false); // Don't drag when pinching
+                    console.log('👆 PINCH MODE');
                     return;
                 }
 
@@ -358,6 +361,7 @@ export default function App() {
                 setIsDragging(true);
                 setDragStart({ x: clientX - imagePosition.x, y: clientY - imagePosition.y });
                 setLastTouchDistance(null); // Reset pinch state
+                console.log('✅ DRAGGING = TRUE');
             };
 
             const handleImageDragMove = (e) => {
@@ -388,7 +392,6 @@ export default function App() {
                 // Handle single touch/mouse drag
                 if (!isDragging || (e.touches && e.touches.length !== 1)) return;
 
-                e.preventDefault();
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 setImagePosition({
@@ -398,24 +401,31 @@ export default function App() {
             };
 
             const handleImageDragEnd = (e) => {
+                console.log('🛑 DRAG END', { touches: e.touches?.length, type: e.type });
+
                 // If there are still touches, check if we should continue pinching
                 if (e.touches && e.touches.length === 2) {
                     const distance = getTouchDistance(e.touches);
                     setLastTouchDistance(distance);
+                    console.log('👆 CONTINUE PINCH');
                     return;
                 }
 
                 setIsDragging(false);
                 setLastTouchDistance(null);
+                console.log('❌ DRAGGING = FALSE, cleared pinch distance');
             };
 
             useEffect(() => {
                 if (isDragging || lastTouchDistance !== null) {
+                    console.log('🔊 ATTACHING window event listeners', { isDragging, lastTouchDistance });
                     window.addEventListener('mousemove', handleImageDragMove);
                     window.addEventListener('mouseup', handleImageDragEnd);
-                    window.addEventListener('touchmove', handleImageDragMove, { passive: false });
+                    // Removed passive: false to fix mobile button responsiveness
+                    window.addEventListener('touchmove', handleImageDragMove);
                     window.addEventListener('touchend', handleImageDragEnd);
                     return () => {
+                        console.log('🔇 REMOVING window event listeners');
                         window.removeEventListener('mousemove', handleImageDragMove);
                         window.removeEventListener('mouseup', handleImageDragEnd);
                         window.removeEventListener('touchmove', handleImageDragMove);
@@ -423,6 +433,26 @@ export default function App() {
                     };
                 }
             }, [isDragging, dragStart, lastTouchDistance]);
+
+            // Global click/touch tracker for debugging
+            useEffect(() => {
+                const logClick = (e) => {
+                    console.log('👆 CLICK detected', {
+                        type: e.type,
+                        target: e.target.tagName,
+                        isButton: e.target.tagName === 'BUTTON',
+                        text: e.target.textContent?.substring(0, 30)
+                    });
+                };
+
+                document.addEventListener('click', logClick, true);
+                document.addEventListener('touchend', logClick, true);
+
+                return () => {
+                    document.removeEventListener('click', logClick, true);
+                    document.removeEventListener('touchend', logClick, true);
+                };
+            }, []);
 
             const renderCanvas = async (includeSafeMargins = true) => {
                 const canvas = canvasRef.current;
@@ -1224,11 +1254,14 @@ export default function App() {
             }, [aspectRatio, selectedOverlay, overlayColor]);
 
             const exportImage = async () => {
+                console.log('📸 EXPORT BUTTON CLICKED - React handler fired!');
                 const canvas = canvasRef.current;
                 if (!canvas) {
+                    console.log('❌ Canvas not ready');
                     alert('Canvas not ready. Please try again.');
                     return;
                 }
+                console.log('✅ Starting export...');
 
                 try {
                     // Re-render canvas without safe margins for export
@@ -1603,7 +1636,10 @@ export default function App() {
 
                                     {/* Mobile Controls Toggle */}
                                     <button
-                                        onClick={() => setShowMobileControls(!showMobileControls)}
+                                        onClick={() => {
+                                            console.log('🎛️ CONTROLS TOGGLE CLICKED - React handler fired!');
+                                            setShowMobileControls(!showMobileControls);
+                                        }}
                                         className="lg:hidden w-full mt-3 bg-blue-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
                                     >
                                         {showMobileControls ? 'Hide' : 'Show'} Controls
