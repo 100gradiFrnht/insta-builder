@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ASPECT_RATIOS, OVERLAY_PATHS } from './utils/constants';
 import { transformTextCase } from './utils/textTransform';
 import { parseMarkdown } from './utils/markdown';
@@ -136,6 +136,13 @@ export default function App() {
             const [showSafeMargins, setShowSafeMargins] = useState(false);
             const [showGlobalFormatting, setShowGlobalFormatting] = useState(false);
             const [lastTouchDistance, setLastTouchDistance] = useState(null);
+
+            // Refs for touch event handlers to avoid stale closures
+            const isDraggingRef = useRef(false);
+            const dragStartRef = useRef({ x: 0, y: 0 });
+            const lastTouchDistanceRef = useRef(null);
+            const imagePositionRef = useRef({ x: 0, y: 0 });
+            const imageScaleRef = useRef(1);
             const [useBlurBackground, setUseBlurBackground] = useState(false);
             const [blurIntensity, setBlurIntensity] = useState(50);
             const [blurImage, setBlurImage] = useState(null);
@@ -147,6 +154,27 @@ export default function App() {
 
             const canvasRef = useRef(null);
             const containerRef = useRef(null);
+
+            // Keep refs in sync with state
+            useEffect(() => {
+                isDraggingRef.current = isDragging;
+            }, [isDragging]);
+
+            useEffect(() => {
+                dragStartRef.current = dragStart;
+            }, [dragStart]);
+
+            useEffect(() => {
+                lastTouchDistanceRef.current = lastTouchDistance;
+            }, [lastTouchDistance]);
+
+            useEffect(() => {
+                imagePositionRef.current = imagePosition;
+            }, [imagePosition]);
+
+            useEffect(() => {
+                imageScaleRef.current = imageScale;
+            }, [imageScale]);
 
             // Predefined file paths for permanent overlays (by color and aspect ratio)
             const PERMANENT_OVERLAY_PATHS = {
@@ -339,15 +367,18 @@ export default function App() {
                 return Math.sqrt(dx * dx + dy * dy);
             };
 
+            // Touch/mouse event handlers using refs to avoid stale closures
+            const touchMoveHandlerRef = useRef(null);
+            const touchEndHandlerRef = useRef(null);
+
             const handleImageDragStart = (e) => {
                 console.log('🎯 DRAG START', { touches: e.touches?.length, type: e.type });
 
                 // Handle pinch zoom - detect two fingers
                 if (e.touches && e.touches.length === 2) {
-                    e.preventDefault();
                     const distance = getTouchDistance(e.touches);
                     setLastTouchDistance(distance);
-                    setIsDragging(false); // Don't drag when pinching
+                    setIsDragging(false);
                     console.log('👆 PINCH MODE');
                     return;
                 }
@@ -355,86 +386,80 @@ export default function App() {
                 // Handle single touch/mouse drag only if not already pinching
                 if (e.touches && e.touches.length > 2) return;
 
-                // REMOVED preventDefault - it was breaking React's event system on mobile
-                // This allows buttons to remain responsive after canvas interactions
-                // e.preventDefault();
-
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 setIsDragging(true);
                 setDragStart({ x: clientX - imagePosition.x, y: clientY - imagePosition.y });
-                setLastTouchDistance(null); // Reset pinch state
+                setLastTouchDistance(null);
                 console.log('✅ DRAGGING = TRUE');
             };
 
-            const handleImageDragMove = useCallback((e) => {
-                // Handle pinch zoom - two fingers
-                if (e.touches && e.touches.length === 2) {
-                    e.preventDefault();
-                    const distance = getTouchDistance(e.touches);
+            // Window-level move handler that uses refs
+            useEffect(() => {
+                const handleMove = (e) => {
+                    // Handle pinch zoom - two fingers
+                    if (e.touches && e.touches.length === 2) {
+                        const distance = getTouchDistance(e.touches);
 
-                    if (lastTouchDistance && lastTouchDistance > 0) {
-                        // Calculate scale change
-                        const ratio = distance / lastTouchDistance;
+                        if (lastTouchDistanceRef.current && lastTouchDistanceRef.current > 0) {
+                            const ratio = distance / lastTouchDistanceRef.current;
+                            const smoothRatio = 1 + (ratio - 1) * 0.8;
+                            const newScale = imageScaleRef.current * smoothRatio;
+                            const clampedScale = Math.max(0.5, Math.min(3, newScale));
+                            setImageScale(clampedScale);
+                        }
 
-                        // Apply gentle smoothing
-                        const smoothRatio = 1 + (ratio - 1) * 0.8;
-
-                        const newScale = imageScale * smoothRatio;
-                        const clampedScale = Math.max(0.5, Math.min(3, newScale));
-
-                        setImageScale(clampedScale);
+                        setLastTouchDistance(distance);
+                        setIsDragging(false);
+                        return;
                     }
 
-                    setLastTouchDistance(distance);
+                    // Handle single touch/mouse drag
+                    if (!isDraggingRef.current || (e.touches && e.touches.length !== 1)) return;
 
-                    setIsDragging(false); // Ensure dragging is off while pinching
-                    return;
-                }
+                    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    setImagePosition({
+                        x: Math.round(clientX - dragStartRef.current.x),
+                        y: Math.round(clientY - dragStartRef.current.y)
+                    });
+                };
 
-                // Handle single touch/mouse drag
-                if (!isDragging || (e.touches && e.touches.length !== 1)) return;
+                const handleEnd = (e) => {
+                    console.log('🛑 DRAG END', { touches: e.touches?.length, type: e.type });
 
-                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-                setImagePosition({
-                    x: clientX - dragStart.x,
-                    y: clientY - dragStart.y
-                });
-            }, [isDragging, dragStart, lastTouchDistance, imageScale]);
+                    // If there are still touches, check if we should continue pinching
+                    if (e.touches && e.touches.length >= 2) {
+                        const distance = getTouchDistance(e.touches);
+                        setLastTouchDistance(distance);
+                        console.log('👆 CONTINUE PINCH');
+                        return;
+                    }
 
-            const handleImageDragEnd = useCallback((e) => {
-                console.log('🛑 DRAG END', { touches: e.touches?.length, type: e.type });
+                    setIsDragging(false);
+                    setLastTouchDistance(null);
+                    console.log('❌ DRAGGING = FALSE');
+                };
 
-                // If there are still touches, check if we should continue pinching
-                if (e.touches && e.touches.length === 2) {
-                    const distance = getTouchDistance(e.touches);
-                    setLastTouchDistance(distance);
-                    console.log('👆 CONTINUE PINCH');
-                    return;
-                }
+                touchMoveHandlerRef.current = handleMove;
+                touchEndHandlerRef.current = handleEnd;
 
-                setIsDragging(false);
-                setLastTouchDistance(null);
-                console.log('❌ DRAGGING = FALSE, cleared pinch distance');
-            }, []);
-
-            useEffect(() => {
                 if (isDragging || lastTouchDistance !== null) {
-                    console.log('🔊 ATTACHING window event listeners', { isDragging, lastTouchDistance });
-                    window.addEventListener('mousemove', handleImageDragMove);
-                    window.addEventListener('mouseup', handleImageDragEnd);
-                    window.addEventListener('touchmove', handleImageDragMove);
-                    window.addEventListener('touchend', handleImageDragEnd);
+                    console.log('🔊 ATTACHING window event listeners');
+                    window.addEventListener('mousemove', handleMove);
+                    window.addEventListener('mouseup', handleEnd);
+                    window.addEventListener('touchmove', handleMove, { passive: true });
+                    window.addEventListener('touchend', handleEnd, { passive: true });
+
                     return () => {
                         console.log('🔇 REMOVING window event listeners');
-                        window.removeEventListener('mousemove', handleImageDragMove);
-                        window.removeEventListener('mouseup', handleImageDragEnd);
-                        window.removeEventListener('touchmove', handleImageDragMove);
-                        window.removeEventListener('touchend', handleImageDragEnd);
+                        window.removeEventListener('mousemove', handleMove);
+                        window.removeEventListener('mouseup', handleEnd);
+                        window.removeEventListener('touchmove', handleMove);
+                        window.removeEventListener('touchend', handleEnd);
                     };
                 }
-            }, [isDragging, lastTouchDistance, handleImageDragMove, handleImageDragEnd]);
+            }, [isDragging, lastTouchDistance]);
 
             // Global click/touch tracker for debugging
             useEffect(() => {
@@ -1412,8 +1437,8 @@ export default function App() {
                                     <div
                                         ref={containerRef}
                                         className="canvas-container relative mx-auto bg-gray-600 rounded-lg overflow-hidden"
-                                        style={{ 
-                                            width: maxCanvasWidth, 
+                                        style={{
+                                            width: maxCanvasWidth,
                                             height: canvasHeight,
                                             cursor: isDragging ? 'grabbing' : 'grab'
                                         }}
