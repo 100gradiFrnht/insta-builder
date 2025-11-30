@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { ASPECT_RATIOS, OVERLAY_PATHS } from './utils/constants';
 import { transformTextCase } from './utils/textTransform';
 import { parseMarkdown } from './utils/markdown';
@@ -367,7 +367,7 @@ export default function App() {
                 console.log('✅ DRAGGING = TRUE');
             };
 
-            const handleImageDragMove = (e) => {
+            const handleImageDragMove = useCallback((e) => {
                 // Handle pinch zoom - two fingers
                 if (e.touches && e.touches.length === 2) {
                     e.preventDefault();
@@ -401,9 +401,9 @@ export default function App() {
                     x: clientX - dragStart.x,
                     y: clientY - dragStart.y
                 });
-            };
+            }, [isDragging, dragStart, lastTouchDistance, imageScale]);
 
-            const handleImageDragEnd = (e) => {
+            const handleImageDragEnd = useCallback((e) => {
                 console.log('🛑 DRAG END', { touches: e.touches?.length, type: e.type });
 
                 // If there are still touches, check if we should continue pinching
@@ -417,14 +417,13 @@ export default function App() {
                 setIsDragging(false);
                 setLastTouchDistance(null);
                 console.log('❌ DRAGGING = FALSE, cleared pinch distance');
-            };
+            }, []);
 
             useEffect(() => {
                 if (isDragging || lastTouchDistance !== null) {
                     console.log('🔊 ATTACHING window event listeners', { isDragging, lastTouchDistance });
                     window.addEventListener('mousemove', handleImageDragMove);
                     window.addEventListener('mouseup', handleImageDragEnd);
-                    // Removed passive: false to fix mobile button responsiveness
                     window.addEventListener('touchmove', handleImageDragMove);
                     window.addEventListener('touchend', handleImageDragEnd);
                     return () => {
@@ -435,7 +434,7 @@ export default function App() {
                         window.removeEventListener('touchend', handleImageDragEnd);
                     };
                 }
-            }, [isDragging, dragStart, lastTouchDistance]);
+            }, [isDragging, lastTouchDistance, handleImageDragMove, handleImageDragEnd]);
 
             // Global click/touch tracker for debugging
             useEffect(() => {
