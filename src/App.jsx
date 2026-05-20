@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { canvasRGBA } from 'stackblur-canvas';
 import { ASPECT_RATIOS, OVERLAY_PATHS } from './utils/constants';
 import { transformTextCase } from './utils/textTransform';
 import { parseMarkdown } from './utils/markdown';
@@ -795,17 +796,37 @@ export default function App() {
                             blurDrawHeight = dimensions.width / blurImgAspect;
                         }
 
-                        // Draw with extra padding so blurred edges don't show inside the canvas
-                        const pad = blurIntensity * 2;
+                        // Primary: stackblur via temp canvas (works on all browsers incl. iOS Safari)
+                        // Falls back to ctx.filter for browsers where stackblur fails (e.g. tainted canvas)
+                        let stackblurDone = false;
+                        try {
+                            const tempCanvas = document.createElement('canvas');
+                            tempCanvas.width = dimensions.width;
+                            tempCanvas.height = dimensions.height;
+                            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+                            tempCtx.save();
+                            tempCtx.translate(centerX + blurImgX, centerY + blurImgY);
+                            tempCtx.rotate((blurImageRotation * Math.PI) / 180);
+                            tempCtx.scale(blurImageScale, blurImageScale);
+                            tempCtx.drawImage(blurSourceImage, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
+                            tempCtx.restore();
+                            canvasRGBA(tempCanvas, 0, 0, dimensions.width, dimensions.height, blurIntensity);
+                            ctx.drawImage(tempCanvas, 0, 0);
+                            stackblurDone = true;
+                        } catch (_) { /* tainted canvas — fall through */ }
 
-                        ctx.save();
-                        ctx.filter = `blur(${blurIntensity}px)`;
-                        ctx.translate(centerX + blurImgX, centerY + blurImgY);
-                        ctx.rotate((blurImageRotation * Math.PI) / 180);
-                        ctx.scale(blurImageScale, blurImageScale);
-                        ctx.drawImage(blurSourceImage, -(blurDrawWidth / 2 + pad), -(blurDrawHeight / 2 + pad), blurDrawWidth + pad * 2, blurDrawHeight + pad * 2);
-                        ctx.filter = 'none';
-                        ctx.restore();
+                        // Fallback: ctx.filter (no pixel reads, works on modern browsers)
+                        if (!stackblurDone) {
+                            const pad = blurIntensity * 2;
+                            ctx.save();
+                            ctx.filter = `blur(${blurIntensity}px)`;
+                            ctx.translate(centerX + blurImgX, centerY + blurImgY);
+                            ctx.rotate((blurImageRotation * Math.PI) / 180);
+                            ctx.scale(blurImageScale, blurImageScale);
+                            ctx.drawImage(blurSourceImage, -(blurDrawWidth / 2 + pad), -(blurDrawHeight / 2 + pad), blurDrawWidth + pad * 2, blurDrawHeight + pad * 2);
+                            ctx.filter = 'none';
+                            ctx.restore();
+                        }
                     }
                 }
 
