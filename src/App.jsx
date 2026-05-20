@@ -317,6 +317,20 @@ export default function App() {
                 }
             };
 
+            const [focusedTextboxId, setFocusedTextboxId] = useState(null);
+
+            const appendEmojiToTextbox = (emoji) => {
+                setTextElements(prev => {
+                    if (prev.length === 0) return prev;
+                    const targetId = focusedTextboxId && prev.some(el => el.id === focusedTextboxId)
+                        ? focusedTextboxId
+                        : prev[prev.length - 1].id;
+                    return prev.map(el =>
+                        el.id === targetId ? { ...el, text: el.text + emoji } : el
+                    );
+                });
+            };
+
             const addText = () => {
                 const bottomMargin = aspectRatio === '9:16' ? 112 : 37;
                 const yPosition = dimensions.height - bottomMargin;
@@ -2292,10 +2306,26 @@ export default function App() {
 
                                         <button
                                             onClick={addText}
-                                            className="w-full bg-blue-600 text-white px-3 md:px-4 py-2 rounded-lg text-sm md:text-base font-medium hover:bg-blue-700 transition mb-3"
+                                            className="w-full bg-blue-600 text-white px-3 md:px-4 py-2 rounded-lg text-sm md:text-base font-medium hover:bg-blue-700 transition mb-2"
                                         >
                                             Add Text
                                         </button>
+                                        <div className="flex gap-2 mb-3">
+                                            <button
+                                                onClick={() => appendEmojiToTextbox('🔸')}
+                                                className="flex-1 bg-gray-100 hover:bg-gray-200 text-sm py-1.5 rounded-lg transition"
+                                                title="Add 🔸 Small Orange Diamond"
+                                            >
+                                                🔸
+                                            </button>
+                                            <button
+                                                onClick={() => appendEmojiToTextbox('🔹')}
+                                                className="flex-1 bg-gray-100 hover:bg-gray-200 text-sm py-1.5 rounded-lg transition"
+                                                title="Add 🔹 Small Blue Diamond"
+                                            >
+                                                🔹
+                                            </button>
+                                        </div>
 
                                         <div className="space-y-3 mb-4">
                                             {[...textElements].reverse().map((el, reverseIndex) => {
@@ -2336,7 +2366,8 @@ export default function App() {
                                                     <textarea
                                                         value={el.text}
                                                         onChange={(e) => updateTextElement(el.id, { text: e.target.value })}
-                                                        className="w-full p-2 border border-gray-300 rounded mb-2 text-xs md:text-sm resize-none overflow-hidden"
+                                                        onFocus={() => setFocusedTextboxId(el.id)}
+                                                        className={`w-full p-2 border rounded mb-2 text-xs md:text-sm resize-none overflow-hidden ${focusedTextboxId === el.id ? 'border-blue-400' : 'border-gray-300'}`}
                                                         rows={Math.max(3, el.text.split('\n').length + Math.ceil(el.text.length / 60))}
                                                     />
 
