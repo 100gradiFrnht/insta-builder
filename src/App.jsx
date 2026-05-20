@@ -3,7 +3,6 @@ import { ASPECT_RATIOS, OVERLAY_PATHS } from './utils/constants';
 import { transformTextCase } from './utils/textTransform';
 import { parseMarkdown } from './utils/markdown';
 import { parseTextWithEmoji, loadEmojiImage } from './utils/emoji';
-import { canvasRGBA } from 'stackblur-canvas';
 
 // Banner tag presets
 const BANNER_PRESETS = {
@@ -76,6 +75,23 @@ const BANNER_PRESETS = {
     vietnam: { name: '🇻🇳 Vietnam', text: '🇻🇳 Vietnam', letterSpacing: 0, align: 'left', bgColor: '#da251d' },
 };
 
+// ISO 3166-1 alpha-2 → BANNER_PRESETS key
+const FLAG_TO_PRESET = {
+    AL:'albania', AD:'andorra', AM:'armenia', AU:'australia', AT:'austria',
+    AZ:'azerbaijan', BY:'belarus', BE:'belgium', BA:'bosnia', BG:'bulgaria',
+    CA:'canada', HR:'croatia', CY:'cyprus', CZ:'czechia', DK:'denmark',
+    EE:'estonia', FI:'finland', FR:'france', GE:'georgia', DE:'germany',
+    GR:'greece', HU:'hungary', IS:'iceland', IE:'ireland', IL:'israel',
+    IT:'italy', KZ:'kazakhstan', XK:'kosovo', LV:'latvia', LT:'lithuania',
+    LU:'luxembourg', MT:'malta', MD:'moldova', MC:'monaco', ME:'montenegro',
+    MA:'morocco', NL:'netherlands', MK:'northmacedonia', NO:'norway',
+    PL:'poland', PT:'portugal', RO:'romania', RU:'russia', SM:'sanmarino',
+    RS:'serbia', SK:'slovakia', SI:'slovenia', ES:'spain', SE:'sweden',
+    CH:'switzerland', TR:'turkiye', UA:'ukraine', GB:'uk',
+    BD:'bangladesh', BT:'bhutan', KH:'cambodia', LA:'laos', MY:'malaysia',
+    NP:'nepal', PH:'philippines', KR:'southkorea', TH:'thailand', VN:'vietnam',
+};
+
 export default function App() {
             const [aspectRatio, setAspectRatio] = useState('4:5');
             const [baseImage, setBaseImage] = useState(null);
@@ -137,6 +153,15 @@ export default function App() {
             const [selectedBannerPreset, setSelectedBannerPreset] = useState('custom');
             const [showBanner, setShowBanner] = useState(true);
             const [photoCredit, setPhotoCredit] = useState('');
+
+            // Bluesky import
+            const [bskyUrl, setBskyUrl] = useState('');
+            const [baseImageUrl, setBaseImageUrl] = useState('');
+            const [bskyLoading, setBskyLoading] = useState(false);
+            const [bskyError, setBskyError] = useState('');
+            const [bskyData, setBskyData] = useState(null); // { posts: [{text, images}], allImages: [{fullsize, thumb}] }
+            const [bskySelectedImageIdx, setBskySelectedImageIdx] = useState(null);
+            const [bskyCustomImage, setBskyCustomImage] = useState(null);
             const [showOverlay, setShowOverlay] = useState(true);
 
             const [imageScale, setImageScale] = useState(1);
@@ -296,6 +321,175 @@ export default function App() {
                     };
                     reader.readAsDataURL(file);
                 }
+            };
+
+            // Loads an external URL as a blob: URL so the canvas is never tainted (blur works).
+            // cache:'reload' forces a fresh CORS-aware request, bypassing any cached non-CORS entry.
+            // Falls back to a direct Image load if the server doesn't support CORS fetch.
+            const loadExternalImage = (url) =>
+                fetch(url, { cache: 'reload' })
+                    .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+                    .then(blob => new Promise((resolve, reject) => {
+                        // Some CDNs return application/octet-stream; coerce to image/jpeg so the blob URL loads
+                        const safeBlob = blob.type.startsWith('image/') ? blob : new Blob([blob], { type: 'image/jpeg' });
+                        const objUrl = URL.createObjectURL(safeBlob);
+                        const img = new Image();
+                        img.onload = () => { URL.revokeObjectURL(objUrl); resolve(img); };
+                        img.onerror = () => { URL.revokeObjectURL(objUrl); reject(); };
+                        img.src = objUrl;
+                    }))
+                    .catch(() => new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.onload = () => resolve(img);
+                        img.onerror = reject;
+                        img.src = url;
+                    }));
+
+            const handleBaseImageUrlLoad = () => {
+                const url = baseImageUrl.trim();
+                if (!url) return;
+                loadExternalImage(url).then(img => {
+                    setBaseImage(img);
+                    setImageScale(1);
+                    setImagePosition({ x: 0, y: 0 });
+                }).catch(() => {});
+            };
+
+            const importFromBluesky = async () => {
+                setBskyLoading(true);
+                setBskyError('');
+                setBskyData(null);
+                setBskySelectedImageIdx(null);
+                setBskyCustomImage(null);
+                try {
+                    const raw = bskyUrl.trim();
+                    const url = new URL(raw.startsWith('http') ? raw : 'https://' + raw);
+                    const parts = url.pathname.split('/').filter(Boolean);
+                    if (parts[0] !== 'profile' || parts[2] !== 'post') throw new Error('Not a valid Bluesky post URL');
+                    const handle = parts[1];
+                    const rkey = parts[3];
+
+                    const resolveRes = await fetch(`https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${handle}`);
+                    if (!resolveRes.ok) throw new Error('Could not resolve handle');
+                    const { did } = await resolveRes.json();
+
+                    const atUri = `at://${did}/app.bsky.feed.post/${rkey}`;
+                    const threadRes = await fetch(`https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread?uri=${encodeURIComponent(atUri)}&depth=20`);
+                    if (!threadRes.ok) throw new Error('Could not fetch thread');
+                    const { thread } = await threadRes.json();
+
+                    // If the pasted post is a reply, re-fetch from the root
+                    let rootThread = thread;
+                    const rootUri = thread.post?.record?.reply?.root?.uri;
+                    if (rootUri) {
+                        const rootRes = await fetch(`https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread?uri=${encodeURIComponent(rootUri)}&depth=20`);
+                        if (rootRes.ok) {
+                            const rootData = await rootRes.json();
+                            rootThread = rootData.thread;
+                        }
+                    }
+
+                    // Walk down following only the original author's replies
+                    const flatPosts = [];
+                    let current = rootThread;
+                    while (current?.$type === 'app.bsky.feed.defs#threadViewPost') {
+                        if (current.post?.author?.did === did) flatPosts.push(current.post);
+                        current = current.replies?.find(r =>
+                            r.$type === 'app.bsky.feed.defs#threadViewPost' &&
+                            r.post?.author?.did === did
+                        ) ?? null;
+                    }
+
+                    if (flatPosts.length === 0) throw new Error('No posts found from this author');
+
+                    // Skip the last post only when there are 2+ posts (last is always the news source link)
+                    const trimmed = flatPosts.length > 1 ? flatPosts.slice(0, -1) : flatPosts;
+                    const posts = trimmed.map(post => {
+                        const images = [];
+                        const embed = post.embed;
+                        if (embed?.$type === 'app.bsky.embed.images#view') {
+                            embed.images.forEach(img => images.push({ fullsize: img.fullsize, thumb: img.thumb }));
+                        } else if (embed?.$type === 'app.bsky.embed.recordWithMedia#view') {
+                            const media = embed.media;
+                            if (media?.$type === 'app.bsky.embed.images#view') {
+                                media.images.forEach(img => images.push({ fullsize: img.fullsize, thumb: img.thumb }));
+                            }
+                        }
+                        return { text: post.record.text, images };
+                    });
+
+                    const allImages = posts.flatMap(p => p.images);
+                    setBskyData({ posts, allImages });
+                    if (allImages.length > 0) setBskySelectedImageIdx(0);
+                } catch (err) {
+                    setBskyError(err.message || 'Import failed');
+                } finally {
+                    setBskyLoading(false);
+                }
+            };
+
+            const handleBskyOwnImageUpload = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => { setBskyCustomImage(img); setBskySelectedImageIdx(null); };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const applyBskyImport = async () => {
+                if (!bskyData) return;
+                // Load image first so all state updates fire in one batch
+                let imgToSet = bskyCustomImage ?? null;
+                if (!imgToSet && bskySelectedImageIdx !== null && bskyData.allImages[bskySelectedImageIdx]) {
+                    imgToSet = await loadExternalImage(bskyData.allImages[bskySelectedImageIdx].fullsize).catch(() => null);
+                }
+                if (imgToSet) {
+                    setBaseImage(imgToSet);
+                    setImageScale(1);
+                    setImagePosition({ x: 0, y: 0 });
+                    setImageRotation(0);
+                }
+                // Auto-set banner preset from first emoji of first post
+                if (bskyData.posts.length > 0) {
+                    const chars = [...bskyData.posts[0].text];
+                    const cp0 = chars[0]?.codePointAt(0);
+                    const cp1 = chars[1]?.codePointAt(0);
+                    const isRI = cp => cp >= 0x1F1E6 && cp <= 0x1F1FF;
+                    if (cp0 === 0x1F534) { // 🔴
+                        handleBannerPresetChange('breaking');
+                    } else if (isRI(cp0) && isRI(cp1)) {
+                        const isoCode = String.fromCharCode(cp0 - 0x1F1E6 + 65) + String.fromCharCode(cp1 - 0x1F1E6 + 65);
+                        handleBannerPresetChange(FLAG_TO_PRESET[isoCode] || 'custom');
+                    } else {
+                        handleBannerPresetChange('custom');
+                    }
+                }
+
+                // Create one textbox per post
+                const stripLeadingEmojis = (text) =>
+                    text.replace(/^([\p{Emoji_Presentation}\p{Regional_Indicator}]\s*)+/u, '');
+
+                const bottomMargin = aspectRatio === '9:16' ? 112 : 37;
+                setTextElements(bskyData.posts.map((post, i) => ({
+                    id: Date.now() + i,
+                    text: stripLeadingEmojis(post.text),
+                    x: dimensions.width / 2,
+                    y: dimensions.height - bottomMargin,
+                    useCustomSettings: false,
+                    fontSize: 40,
+                    color: '#ffffff',
+                    fontFamily: 'Helvetica Neue',
+                    fontWeight: 'normal',
+                    fontStyle: 'normal',
+                    textAlign: 'left',
+                    textCase: 'default',
+                    justify: false,
+                    maxWidth: dimensions.width - 100,
+                })));
             };
 
             const handleBlurImageUpload = (e) => {
@@ -584,38 +778,15 @@ export default function App() {
                     const blurSourceImage = useBaseImageForBlur ? baseImage : blurImage;
 
                     if (blurSourceImage) {
-                        // Create temporary canvas for blur processing
-                        const tempCanvas = document.createElement('canvas');
-                        tempCanvas.width = dimensions.width;
-                        tempCanvas.height = dimensions.height;
-                        const tempCtx = tempCanvas.getContext('2d');
-
-                        tempCtx.save();
-
-                        // Center point of canvas
                         const centerX = dimensions.width / 2;
                         const centerY = dimensions.height / 2;
-
-                        // Apply blur image position offset (scaled to canvas coordinates)
                         const blurImgX = blurImagePosition.x / scale;
                         const blurImgY = blurImagePosition.y / scale;
 
-                        // Move to center + offset
-                        tempCtx.translate(centerX + blurImgX, centerY + blurImgY);
-
-                        // Apply rotation around the center
-                        tempCtx.rotate((blurImageRotation * Math.PI) / 180);
-
-                        // Apply zoom
-                        tempCtx.scale(blurImageScale, blurImageScale);
-
-                        // Calculate blur image dimensions to fill canvas (crop, not stretch)
                         const blurImgAspect = blurSourceImage.width / blurSourceImage.height;
                         const canvasAspect = dimensions.width / dimensions.height;
-
                         let blurDrawWidth = dimensions.width;
                         let blurDrawHeight = dimensions.height;
-
                         if (blurImgAspect > canvasAspect) {
                             blurDrawWidth = dimensions.height * blurImgAspect;
                             blurDrawHeight = dimensions.height;
@@ -624,15 +795,17 @@ export default function App() {
                             blurDrawHeight = dimensions.width / blurImgAspect;
                         }
 
-                        // Draw image to temporary canvas
-                        tempCtx.drawImage(blurSourceImage, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
-                        tempCtx.restore();
+                        // Draw with extra padding so blurred edges don't show inside the canvas
+                        const pad = blurIntensity * 2;
 
-                        // Apply stackblur (works on iOS unlike CSS filter)
-                        canvasRGBA(tempCanvas, 0, 0, dimensions.width, dimensions.height, blurIntensity);
-
-                        // Draw blurred result to main canvas
-                        ctx.drawImage(tempCanvas, 0, 0);
+                        ctx.save();
+                        ctx.filter = `blur(${blurIntensity}px)`;
+                        ctx.translate(centerX + blurImgX, centerY + blurImgY);
+                        ctx.rotate((blurImageRotation * Math.PI) / 180);
+                        ctx.scale(blurImageScale, blurImageScale);
+                        ctx.drawImage(blurSourceImage, -(blurDrawWidth / 2 + pad), -(blurDrawHeight / 2 + pad), blurDrawWidth + pad * 2, blurDrawHeight + pad * 2);
+                        ctx.filter = 'none';
+                        ctx.restore();
                     }
                 }
 
@@ -1411,12 +1584,12 @@ export default function App() {
             };
 
             return (
-                <div className="bg-gray-50">
+                <div className="bg-gray-900">
                     <div className="max-w-7xl mx-auto py-4">
                         <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:px-4">
                             {/* Canvas - Always visible */}
                             <div className="lg:col-span-2 canvas-wrapper">
-                                <div className="bg-white rounded-lg shadow-lg p-2 md:p-4 mx-2 md:mx-0 lg:sticky lg:top-4">
+                                <div className="bg-gray-800 rounded-lg shadow-lg p-2 md:p-4 mx-2 md:mx-0 lg:sticky lg:top-4">
                                     <div className="mb-3 flex flex-wrap gap-1 md:gap-2">
                                         {Object.entries(ASPECT_RATIOS).map(([key, value]) => (
                                             <button
@@ -1425,7 +1598,7 @@ export default function App() {
                                                 className={`px-2 md:px-4 py-1.5 md:py-2 rounded-lg text-sm md:text-base font-medium transition ${
                                                     aspectRatio === key
                                                         ? 'bg-blue-600 text-white'
-                                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                        : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                 }`}
                                             >
                                                 {value.label}
@@ -1442,7 +1615,7 @@ export default function App() {
                                                 onChange={(e) => setShowSafeMargins(e.target.checked)}
                                                 className="w-4 h-4 text-blue-600 rounded"
                                             />
-                                            <span className="text-xs md:text-sm text-gray-700 font-medium">
+                                            <span className="text-xs md:text-sm text-gray-200 font-medium">
                                                 Show 3:4 Safe Area (Instagram Grid Crop)
                                             </span>
                                         </label>
@@ -1473,14 +1646,14 @@ export default function App() {
                                     {baseImage && (
                                         <div className="mt-3 md:mt-4 space-y-3">
                                             {/* Quick fit buttons */}
-                                            <div className="flex gap-2 pb-2 border-b border-gray-200">
+                                            <div className="flex gap-2 pb-2 border-b border-gray-600">
                                                 <button
                                                     onClick={() => {
                                                         // Crop to fit: reset to default (fills canvas)
                                                         setImageScale(1);
                                                         setImagePosition({ x: 0, y: 0 });
                                                     }}
-                                                    className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                                                    className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-200 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
                                                 >
                                                     Crop to fit
                                                 </button>
@@ -1506,7 +1679,7 @@ export default function App() {
                                                         setImageScale(scale);
                                                         setImagePosition({ x: 0, y: 0 });
                                                     }}
-                                                    className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                                                    className="flex-1 px-3 py-1.5 text-xs font-medium text-gray-200 bg-gray-700 hover:bg-gray-600 rounded transition-colors"
                                                 >
                                                     Fit to page
                                                 </button>
@@ -1514,7 +1687,7 @@ export default function App() {
 
                                             <div>
                                                 <div className="flex items-center gap-2 mb-2">
-                                                    <label className="text-xs md:text-sm font-medium text-gray-700 whitespace-nowrap">
+                                                    <label className="text-xs md:text-sm font-medium text-gray-200 whitespace-nowrap">
                                                         Zoom
                                                     </label>
                                                     <input
@@ -1527,7 +1700,7 @@ export default function App() {
                                                             const val = parseFloat(e.target.value);
                                                             if (!isNaN(val)) setImageScale(val);
                                                         }}
-                                                        className="w-20 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                        className="w-20 px-2 py-1 text-xs border border-gray-600 rounded"
                                                     />
                                                     <button
                                                         onClick={() => setImageScale(1)}
@@ -1551,7 +1724,7 @@ export default function App() {
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2 mb-2">
-                                                    <label className="text-xs md:text-sm font-medium text-gray-700 whitespace-nowrap">
+                                                    <label className="text-xs md:text-sm font-medium text-gray-200 whitespace-nowrap">
                                                         X Position
                                                     </label>
                                                     <input
@@ -1563,7 +1736,7 @@ export default function App() {
                                                             const val = parseFloat(e.target.value);
                                                             if (!isNaN(val)) setImagePosition(prev => ({ ...prev, x: val }));
                                                         }}
-                                                        className="w-20 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                        className="w-20 px-2 py-1 text-xs border border-gray-600 rounded"
                                                     />
                                                     <button
                                                         onClick={() => setImagePosition(prev => ({ ...prev, x: 0 }))}
@@ -1587,7 +1760,7 @@ export default function App() {
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2 mb-2">
-                                                    <label className="text-xs md:text-sm font-medium text-gray-700 whitespace-nowrap">
+                                                    <label className="text-xs md:text-sm font-medium text-gray-200 whitespace-nowrap">
                                                         Y Position
                                                     </label>
                                                     <input
@@ -1599,7 +1772,7 @@ export default function App() {
                                                             const val = parseFloat(e.target.value);
                                                             if (!isNaN(val)) setImagePosition(prev => ({ ...prev, y: val }));
                                                         }}
-                                                        className="w-20 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                        className="w-20 px-2 py-1 text-xs border border-gray-600 rounded"
                                                     />
                                                     <button
                                                         onClick={() => setImagePosition(prev => ({ ...prev, y: 0 }))}
@@ -1622,27 +1795,27 @@ export default function App() {
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-xs md:text-sm font-medium text-gray-700 mb-2">
+                                                <label className="block text-xs md:text-sm font-medium text-gray-200 mb-2">
                                                     Rotation
                                                 </label>
                                                 <div className="grid grid-cols-4 gap-2">
                                                     <button
                                                         onClick={() => setImageRotation((imageRotation + 90) % 360)}
-                                                        className="px-2 py-2 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium transition"
+                                                        className="px-2 py-2 bg-gray-700 hover:bg-gray-600 rounded text-xs font-medium transition"
                                                         title="Rotate 90° clockwise"
                                                     >
                                                         90°
                                                     </button>
                                                     <button
                                                         onClick={() => setImageRotation((imageRotation + 180) % 360)}
-                                                        className="px-2 py-2 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium transition"
+                                                        className="px-2 py-2 bg-gray-700 hover:bg-gray-600 rounded text-xs font-medium transition"
                                                         title="Rotate 180°"
                                                     >
                                                         180°
                                                     </button>
                                                     <button
                                                         onClick={() => setImageRotation((imageRotation + 270) % 360)}
-                                                        className="px-2 py-2 bg-gray-100 hover:bg-gray-200 rounded text-xs font-medium transition"
+                                                        className="px-2 py-2 bg-gray-700 hover:bg-gray-600 rounded text-xs font-medium transition"
                                                         title="Rotate 270° clockwise (90° counter-clockwise)"
                                                     >
                                                         270°
@@ -1691,43 +1864,125 @@ export default function App() {
                             {/* Controls - Desktop sidebar / Mobile bottom panel */}
                             <div className={`${showMobileControls ? 'block' : 'hidden'} lg:block controls-section`}>
                                 {/* Mobile Tabs */}
-                                <div className="lg:hidden flex border-b border-gray-200 bg-white sticky top-0 z-10">
+                                <div className="lg:hidden flex border-b border-gray-600 bg-gray-800 sticky top-0 z-10">
                                     <button
                                         onClick={() => setActiveTab('image')}
-                                        className={`flex-1 py-3 text-sm font-medium ${activeTab === 'image' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
+                                        className={`flex-1 py-3 text-sm font-medium ${activeTab === 'image' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400'}`}
                                     >
                                         Image
                                     </button>
                                     <button
                                         onClick={() => setActiveTab('overlays')}
-                                        className={`flex-1 py-3 text-sm font-medium ${activeTab === 'overlays' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
+                                        className={`flex-1 py-3 text-sm font-medium ${activeTab === 'overlays' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400'}`}
                                     >
                                         Overlays
                                     </button>
                                     <button
                                         onClick={() => setActiveTab('text')}
-                                        className={`flex-1 py-3 text-sm font-medium ${activeTab === 'text' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
+                                        className={`flex-1 py-3 text-sm font-medium ${activeTab === 'text' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400'}`}
                                     >
                                         Text
                                     </button>
                                 </div>
 
                                 <div className="space-y-4 p-2 md:p-0 mobile-panel">
+                                    {/* Import from Bluesky */}
+                                    <div className="bg-gray-800 rounded-lg shadow-lg p-2">
+                                        <h2 className="text-base md:text-lg font-semibold mb-2 flex items-center gap-2">Import from Bluesky <span className="text-xs font-medium bg-yellow-900 text-yellow-300 px-1.5 py-0.5 rounded">Beta</span></h2>
+                                        <div className="flex gap-2 mb-2">
+                                            <input
+                                                type="text"
+                                                value={bskyUrl}
+                                                onChange={(e) => setBskyUrl(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Enter' && importFromBluesky()}
+                                                placeholder="https://bsky.app/profile/…/post/…"
+                                                className="flex-1 p-2 border border-gray-600 rounded text-xs"
+                                            />
+                                            <button
+                                                onClick={importFromBluesky}
+                                                disabled={bskyLoading || !bskyUrl.trim()}
+                                                className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition whitespace-nowrap"
+                                            >
+                                                {bskyLoading ? 'Loading…' : 'Import'}
+                                            </button>
+                                        </div>
+                                        {bskyError && <p className="text-red-500 text-xs mb-2">{bskyError}</p>}
+                                        {bskyData && (
+                                            <div className="space-y-3">
+                                                <div>
+                                                    <p className="text-xs text-gray-400 mb-1">
+                                                        {bskyData.allImages.length > 0 ? 'Choose image:' : 'No images — upload your own:'}
+                                                    </p>
+                                                    <div className="flex flex-wrap gap-2 items-center">
+                                                        {bskyData.allImages.map((img, i) => (
+                                                            <img
+                                                                key={i}
+                                                                src={img.thumb}
+                                                                onClick={() => { setBskySelectedImageIdx(i); setBskyCustomImage(null); }}
+                                                                className={`w-14 h-14 object-cover rounded cursor-pointer border-2 transition ${bskySelectedImageIdx === i && !bskyCustomImage ? 'border-blue-500' : 'border-transparent hover:border-gray-600'}`}
+                                                                alt=""
+                                                            />
+                                                        ))}
+                                                        {bskyData.allImages.length === 0 && (
+                                                            <label className={`w-14 h-14 border-2 border-dashed rounded flex flex-col items-center justify-center cursor-pointer text-gray-400 hover:border-blue-400 hover:text-blue-400 transition text-center ${bskyCustomImage ? 'border-blue-500 text-blue-500' : 'border-gray-600'}`}>
+                                                                <span className="text-lg leading-none">+</span>
+                                                                <span className="text-xs leading-tight mt-0.5">Own</span>
+                                                                <input type="file" accept="image/*" className="hidden" onChange={handleBskyOwnImageUpload} />
+                                                            </label>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-gray-400 mb-1">{bskyData.posts.length} post{bskyData.posts.length !== 1 ? 's' : ''}{bskyData.posts.length > 1 ? ' (last skipped — news link)' : ''}:</p>
+                                                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                                        {bskyData.posts.map((post, i) => (
+                                                            <div key={i} className="bg-gray-900 border border-gray-600 rounded p-1.5">
+                                                                <p className="text-xs text-gray-400 mb-0.5">#{i + 1}</p>
+                                                                <p className="text-xs text-gray-200 whitespace-pre-wrap">{post.text}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={applyBskyImport}
+                                                    className="w-full bg-green-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition"
+                                                >
+                                                    Apply to Canvas
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     {/* Base Image - Desktop: always show, Mobile: show in 'image' tab */}
-                                    <div className={`${activeTab === 'image' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
+                                    <div className={`${activeTab === 'image' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-gray-800 rounded-lg shadow-lg p-2`}>
                                         <h2 className="text-base md:text-lg font-semibold mb-2">Base Image</h2>
-                                        <label className="block mb-3">
+                                        <label className="block mb-2">
                                             <span className="sr-only">Choose base image</span>
                                             <input
                                                 type="file"
                                                 accept="image/*"
                                                 onChange={handleBaseImageUpload}
-                                                className="block w-full text-xs md:text-sm text-gray-500 file:mr-2 md:file:mr-4 file:py-1.5 md:file:py-2 file:px-3 md:file:px-4 file:rounded-full file:border-0 file:text-xs md:file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                                className="block w-full text-xs md:text-sm text-gray-400 file:mr-2 md:file:mr-4 file:py-1.5 md:file:py-2 file:px-3 md:file:px-4 file:rounded-full file:border-0 file:text-xs md:file:text-sm file:font-semibold file:bg-gray-700 file:text-gray-200 hover:file:bg-gray-600"
                                             />
                                         </label>
+                                        <div className="flex gap-2 mb-3">
+                                            <input
+                                                type="text"
+                                                value={baseImageUrl}
+                                                onChange={(e) => setBaseImageUrl(e.target.value)}
+                                                onKeyDown={(e) => e.key === 'Enter' && handleBaseImageUrlLoad()}
+                                                placeholder="Or paste image URL…"
+                                                className="flex-1 text-xs border border-gray-600 rounded px-2 py-1.5 focus:outline-none focus:border-blue-400"
+                                            />
+                                            <button
+                                                onClick={handleBaseImageUrlLoad}
+                                                disabled={!baseImageUrl.trim()}
+                                                className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-40 transition"
+                                            >Load</button>
+                                        </div>
 
                                         {/* Blur Background Options */}
-                                        <div className="mt-3 pt-3 border-t border-gray-200">
+                                        <div className="mt-3 pt-3 border-t border-gray-600">
                                             <label className="flex items-center gap-2 cursor-pointer mb-3">
                                                 <input
                                                     type="checkbox"
@@ -1735,7 +1990,7 @@ export default function App() {
                                                     onChange={(e) => setUseBlurBackground(e.target.checked)}
                                                     className="w-4 h-4 text-blue-600 rounded"
                                                 />
-                                                <span className="text-xs md:text-sm text-gray-700 font-medium">
+                                                <span className="text-xs md:text-sm text-gray-200 font-medium">
                                                     Enable Blur Background
                                                 </span>
                                             </label>
@@ -1749,25 +2004,25 @@ export default function App() {
                                                             onChange={(e) => setUseBaseImageForBlur(e.target.checked)}
                                                             className="w-4 h-4 text-blue-600 rounded"
                                                         />
-                                                        <span className="text-xs text-gray-700">
+                                                        <span className="text-xs text-gray-200">
                                                             Use base image for blur
                                                         </span>
                                                     </label>
 
                                                     {!useBaseImageForBlur && (
                                                         <label className="block">
-                                                            <span className="text-xs text-gray-600 mb-1 block">Blur Image</span>
+                                                            <span className="text-xs text-gray-300 mb-1 block">Blur Image</span>
                                                             <input
                                                                 type="file"
                                                                 accept="image/*"
                                                                 onChange={handleBlurImageUpload}
-                                                                className="block w-full text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
+                                                                className="block w-full text-xs text-gray-400 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-gray-700 file:text-gray-200 hover:file:bg-gray-200"
                                                             />
                                                         </label>
                                                     )}
 
                                                     <div>
-                                                        <label className="text-xs text-gray-600 mb-1 block">Blur Intensity</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Blur Intensity</label>
                                                         <div className="flex items-center gap-2 mb-1">
                                                             <input
                                                                 type="number"
@@ -1779,7 +2034,7 @@ export default function App() {
                                                                     const val = parseInt(e.target.value);
                                                                     if (!isNaN(val)) setBlurIntensity(val);
                                                                 }}
-                                                                className="w-16 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                                className="w-16 px-2 py-1 text-xs border border-gray-600 rounded"
                                                             />
                                                             <button
                                                                 onClick={() => setBlurIntensity(50)}
@@ -1800,11 +2055,11 @@ export default function App() {
                                                     </div>
 
                                                     {/* Blur Image Controls */}
-                                                    <div className="space-y-2 pt-2 border-t border-gray-100">
-                                                        <p className="text-xs font-medium text-gray-600">Blur Image Controls</p>
+                                                    <div className="space-y-2 pt-2 border-t border-gray-700">
+                                                        <p className="text-xs font-medium text-gray-300">Blur Image Controls</p>
 
                                                         <div>
-                                                            <label className="text-xs text-gray-600 mb-1 block">Zoom</label>
+                                                            <label className="text-xs text-gray-300 mb-1 block">Zoom</label>
                                                             <div className="flex items-center gap-2 mb-1">
                                                                 <input
                                                                     type="number"
@@ -1816,7 +2071,7 @@ export default function App() {
                                                                         const val = parseFloat(e.target.value);
                                                                         if (!isNaN(val)) setBlurImageScale(val);
                                                                     }}
-                                                                    className="w-16 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                                    className="w-16 px-2 py-1 text-xs border border-gray-600 rounded"
                                                                 />
                                                                 <button
                                                                     onClick={() => setBlurImageScale(1)}
@@ -1840,7 +2095,7 @@ export default function App() {
                                                         </div>
 
                                                         <div>
-                                                            <label className="text-xs text-gray-600 mb-1 block">X Position</label>
+                                                            <label className="text-xs text-gray-300 mb-1 block">X Position</label>
                                                             <div className="flex items-center gap-2 mb-1">
                                                                 <input
                                                                     type="number"
@@ -1851,7 +2106,7 @@ export default function App() {
                                                                         const val = parseFloat(e.target.value);
                                                                         if (!isNaN(val)) setBlurImagePosition(prev => ({ ...prev, x: val }));
                                                                     }}
-                                                                    className="w-16 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                                    className="w-16 px-2 py-1 text-xs border border-gray-600 rounded"
                                                                 />
                                                                 <button
                                                                     onClick={() => setBlurImagePosition(prev => ({ ...prev, x: 0 }))}
@@ -1875,7 +2130,7 @@ export default function App() {
                                                         </div>
 
                                                         <div>
-                                                            <label className="text-xs text-gray-600 mb-1 block">Y Position</label>
+                                                            <label className="text-xs text-gray-300 mb-1 block">Y Position</label>
                                                             <div className="flex items-center gap-2 mb-1">
                                                                 <input
                                                                     type="number"
@@ -1886,7 +2141,7 @@ export default function App() {
                                                                         const val = parseFloat(e.target.value);
                                                                         if (!isNaN(val)) setBlurImagePosition(prev => ({ ...prev, y: val }));
                                                                     }}
-                                                                    className="w-16 px-2 py-1 text-xs border border-gray-300 rounded"
+                                                                    className="w-16 px-2 py-1 text-xs border border-gray-600 rounded"
                                                                 />
                                                                 <button
                                                                     onClick={() => setBlurImagePosition(prev => ({ ...prev, y: 0 }))}
@@ -1910,23 +2165,23 @@ export default function App() {
                                                         </div>
 
                                                         <div>
-                                                            <label className="text-xs text-gray-600 mb-1 block">Rotation</label>
+                                                            <label className="text-xs text-gray-300 mb-1 block">Rotation</label>
                                                             <div className="grid grid-cols-4 gap-1">
                                                                 <button
                                                                     onClick={() => setBlurImageRotation((blurImageRotation + 90) % 360)}
-                                                                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs transition"
+                                                                    className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs transition"
                                                                 >
                                                                     90°
                                                                 </button>
                                                                 <button
                                                                     onClick={() => setBlurImageRotation((blurImageRotation + 180) % 360)}
-                                                                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs transition"
+                                                                    className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs transition"
                                                                 >
                                                                     180°
                                                                 </button>
                                                                 <button
                                                                     onClick={() => setBlurImageRotation((blurImageRotation + 270) % 360)}
-                                                                    className="px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-xs transition"
+                                                                    className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs transition"
                                                                 >
                                                                     270°
                                                                 </button>
@@ -1945,7 +2200,7 @@ export default function App() {
                                     </div>
 
                                     {/* Overlay Color - Desktop: always show, Mobile: show in 'overlays' tab */}
-                                    <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
+                                    <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-gray-800 rounded-lg shadow-lg p-2`}>
                                         <div className="flex items-center justify-between mb-2">
                                             <h2 className="text-base md:text-lg font-semibold">Overlay</h2>
                                             <button
@@ -1962,7 +2217,7 @@ export default function App() {
                                             </button>
                                         </div>
                                         <div className="space-y-3">
-                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-600 rounded-lg hover:bg-gray-700 transition">
                                                 <input
                                                     type="radio"
                                                     name="overlayColor"
@@ -1971,9 +2226,9 @@ export default function App() {
                                                     onChange={(e) => setOverlayColor(e.target.value)}
                                                     className="w-5 h-5 text-blue-600"
                                                 />
-                                                <span className="text-sm md:text-base font-medium text-gray-700">White</span>
+                                                <span className="text-sm md:text-base font-medium text-gray-200">White</span>
                                             </label>
-                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
+                                            <label className="flex items-center space-x-3 cursor-pointer p-3 border-2 border-gray-600 rounded-lg hover:bg-gray-700 transition">
                                                 <input
                                                     type="radio"
                                                     name="overlayColor"
@@ -1982,13 +2237,13 @@ export default function App() {
                                                     onChange={(e) => setOverlayColor(e.target.value)}
                                                     className="w-5 h-5 text-blue-600"
                                                 />
-                                                <span className="text-sm md:text-base font-medium text-gray-700">Black</span>
+                                                <span className="text-sm md:text-base font-medium text-gray-200">Black</span>
                                             </label>
                                         </div>
                                     </div>
 
                                     {/* Tag Banner Controls */}
-                                    <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
+                                    <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-gray-800 rounded-lg shadow-lg p-2`}>
                                         <div className="flex items-center justify-between mb-2">
                                             <h2 className="text-base md:text-lg font-semibold">Tag Banner</h2>
                                             <button
@@ -2008,11 +2263,11 @@ export default function App() {
                                         <div className="space-y-3">
                                                 {/* Banner Preset */}
                                                 <div>
-                                                    <label className="text-xs text-gray-600 mb-1 block">Preset</label>
+                                                    <label className="text-xs text-gray-300 mb-1 block">Preset</label>
                                                     <select
                                                         value={selectedBannerPreset}
                                                         onChange={(e) => handleBannerPresetChange(e.target.value)}
-                                                        className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                                        className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
                                                     >
                                                         <option value="breaking">🔴 Breaking</option>
                                                         <option value="custom">Custom</option>
@@ -2089,7 +2344,7 @@ export default function App() {
                                                 {/* Banner Text - Only show for Custom preset */}
                                                 {selectedBannerPreset === 'custom' && (
                                                     <div>
-                                                        <label className="text-xs text-gray-600 mb-1 block">Banner Text</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Banner Text</label>
                                                         <input
                                                             type="text"
                                                             value={bannerText}
@@ -2097,7 +2352,7 @@ export default function App() {
                                                                 setBannerText(e.target.value);
                                                                 setSelectedBannerPreset('custom');
                                                             }}
-                                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                                            className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
                                                         />
                                                     </div>
                                                 )}
@@ -2105,7 +2360,7 @@ export default function App() {
                                                 {/* Letter Spacing and Color */}
                                                 <div className="grid grid-cols-2 gap-2">
                                                     <div>
-                                                        <label className="text-xs text-gray-600 mb-1 block">Letter Spacing (%)</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Letter Spacing (%)</label>
                                                         <input
                                                             type="text"
                                                             value={bannerLetterSpacing === '' ? '' : (typeof bannerLetterSpacing === 'number' ? bannerLetterSpacing * 100 : '')}
@@ -2122,12 +2377,12 @@ export default function App() {
                                                             className={`w-full p-2 border-2 rounded text-xs md:text-sm ${
                                                                 bannerLetterSpacing === '' || typeof bannerLetterSpacing !== 'number'
                                                                     ? 'border-red-600 bg-red-100'
-                                                                    : 'border-gray-300'
+                                                                    : 'border-gray-600'
                                                             }`}
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label className="text-xs text-gray-600 mb-1 block">Color</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Color</label>
                                                         <input
                                                             type="color"
                                                             value={bannerColor}
@@ -2135,14 +2390,14 @@ export default function App() {
                                                                 setBannerColor(e.target.value);
                                                                 setSelectedBannerPreset('custom');
                                                             }}
-                                                            className="w-full h-10 border border-gray-300 rounded cursor-pointer"
+                                                            className="w-full h-10 border border-gray-600 rounded cursor-pointer"
                                                         />
                                                     </div>
                                                 </div>
 
                                                 {/* Transparency */}
                                                 <div>
-                                                    <label className="text-xs text-gray-600 mb-1 block">Transparency</label>
+                                                    <label className="text-xs text-gray-300 mb-1 block">Transparency</label>
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <input
                                                             type="text"
@@ -2159,10 +2414,10 @@ export default function App() {
                                                             className={`w-16 px-2 py-1 text-xs border-2 rounded ${
                                                                 bannerOpacity === '' || typeof bannerOpacity !== 'number'
                                                                     ? 'border-red-600 bg-red-100'
-                                                                    : 'border-gray-300'
+                                                                    : 'border-gray-600'
                                                             }`}
                                                         />
-                                                        <span className="text-xs text-gray-500">%</span>
+                                                        <span className="text-xs text-gray-400">%</span>
                                                     </div>
                                                     <input
                                                         type="range"
@@ -2181,7 +2436,7 @@ export default function App() {
                                                 {/* Font Size and Font Family */}
                                                 <div className="grid grid-cols-2 gap-2">
                                                     <div>
-                                                        <label className="text-xs text-gray-600 mb-1 block">Font Size</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Font Size</label>
                                                         <input
                                                             type="text"
                                                             value={bannerFontSize === '' ? '' : (typeof bannerFontSize === 'number' ? bannerFontSize : '')}
@@ -2197,12 +2452,12 @@ export default function App() {
                                                             className={`w-full p-2 border-2 rounded text-xs md:text-sm ${
                                                                 bannerFontSize === '' || typeof bannerFontSize !== 'number'
                                                                     ? 'border-red-600 bg-red-100'
-                                                                    : 'border-gray-300'
+                                                                    : 'border-gray-600'
                                                             }`}
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label className="text-xs text-gray-600 mb-1 block">Font</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Font</label>
                                                         <select
                                                             value={bannerFontFamily}
                                                             onChange={(e) => {
@@ -2211,7 +2466,7 @@ export default function App() {
                                                                     setBannerTextCase('default');
                                                                 }
                                                             }}
-                                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                                            className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
                                                         >
                                                             <option value="Helvetica Neue">Helvetica Neue</option>
                                                             <option value="Singing Sans">Singing Sans</option>
@@ -2229,22 +2484,22 @@ export default function App() {
                                                 {/* Font Weight and Font Style */}
                                                 <div className="grid grid-cols-2 gap-2">
                                                     <div>
-                                                        <label className="text-xs text-gray-600 mb-1 block">Weight</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Weight</label>
                                                         <select
                                                             value={bannerFontWeight}
                                                             onChange={(e) => setBannerFontWeight(e.target.value)}
-                                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                                            className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
                                                         >
                                                             <option value="normal">Normal</option>
                                                             <option value="bold">Bold</option>
                                                         </select>
                                                     </div>
                                                     <div>
-                                                        <label className="text-xs text-gray-600 mb-1 block">Style</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Style</label>
                                                         <select
                                                             value={bannerFontStyle}
                                                             onChange={(e) => setBannerFontStyle(e.target.value)}
-                                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                                            className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
                                                         >
                                                             <option value="normal">Normal</option>
                                                             <option value="italic">Italic</option>
@@ -2255,14 +2510,14 @@ export default function App() {
                                                 {/* Text Align and Text Case */}
                                                 <div className="grid grid-cols-2 gap-2">
                                                     <div>
-                                                        <label className="text-xs text-gray-600 mb-1 block">Align</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Align</label>
                                                         <select
                                                             value={bannerTextAlign}
                                                             onChange={(e) => {
                                                                 setBannerTextAlign(e.target.value);
                                                                 setSelectedBannerPreset('custom');
                                                             }}
-                                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                                            className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
                                                         >
                                                             <option value="left">Left</option>
                                                             <option value="center">Center</option>
@@ -2270,11 +2525,11 @@ export default function App() {
                                                         </select>
                                                     </div>
                                                     <div>
-                                                        <label className="text-xs text-gray-600 mb-1 block">Text Case</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Text Case</label>
                                                         <select
                                                             value={bannerTextCase}
                                                             onChange={(e) => setBannerTextCase(e.target.value)}
-                                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                                            className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
                                                         >
                                                             <option value="default">Default</option>
                                                             <option value="uppercase">UPPERCASE</option>
@@ -2288,20 +2543,20 @@ export default function App() {
                                     </div>
 
                                     {/* Photo Credit */}
-                                    <div className={`${activeTab === 'text' || activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
+                                    <div className={`${activeTab === 'text' || activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-gray-800 rounded-lg shadow-lg p-2`}>
                                         <h2 className="text-base md:text-lg font-semibold mb-2">Photo Credit</h2>
                                         <input
                                             type="text"
                                             value={photoCredit}
                                             onChange={(e) => setPhotoCredit(e.target.value)}
                                             placeholder="e.g. © Corinne Cumming / EBU"
-                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                            className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
                                         />
                                         <p className="text-xs text-gray-400 mt-1">Rendered vertically along the left edge at 50% opacity</p>
                                     </div>
 
                                     {/* Text Controls - Desktop: always show, Mobile: show in 'text' tab */}
-                                    <div className={`${activeTab === 'text' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
+                                    <div className={`${activeTab === 'text' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-gray-800 rounded-lg shadow-lg p-2`}>
                                         <h2 className="text-base md:text-lg font-semibold mb-2">Text</h2>
 
                                         <button
@@ -2313,14 +2568,14 @@ export default function App() {
                                         <div className="flex gap-2 mb-3">
                                             <button
                                                 onClick={() => appendEmojiToTextbox('🔸')}
-                                                className="flex-1 bg-gray-100 hover:bg-gray-200 text-sm py-1.5 rounded-lg transition"
+                                                className="flex-1 bg-gray-700 hover:bg-gray-600 text-sm py-1.5 rounded-lg transition"
                                                 title="Add 🔸 Small Orange Diamond"
                                             >
                                                 🔸
                                             </button>
                                             <button
                                                 onClick={() => appendEmojiToTextbox('🔹')}
-                                                className="flex-1 bg-gray-100 hover:bg-gray-200 text-sm py-1.5 rounded-lg transition"
+                                                className="flex-1 bg-gray-700 hover:bg-gray-600 text-sm py-1.5 rounded-lg transition"
                                                 title="Add 🔹 Small Blue Diamond"
                                             >
                                                 🔹
@@ -2331,17 +2586,17 @@ export default function App() {
                                             {[...textElements].reverse().map((el, reverseIndex) => {
                                                 const index = textElements.length - 1 - reverseIndex;
                                                 return (
-                                                <div key={el.id} className="border border-gray-200 rounded-lg p-2 md:p-3">
+                                                <div key={el.id} className="border border-gray-600 rounded-lg p-2 md:p-3">
                                                     {/* Header with number and reorder buttons */}
                                                     <div className="flex items-center justify-between mb-2">
-                                                        <span className="text-xs font-semibold text-gray-700">Textbox #{textElements.length - index}</span>
+                                                        <span className="text-xs font-semibold text-gray-200">Textbox #{textElements.length - index}</span>
                                                         <div className="flex gap-1">
                                                             <button
                                                                 onClick={() => moveTextElementDown(index)}
                                                                 disabled={index === textElements.length - 1}
                                                                 className={`px-2 py-1 rounded text-xs transition ${
                                                                     index === textElements.length - 1
-                                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
                                                                         : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                                                                 }`}
                                                                 title="Move Up (towards top of canvas)"
@@ -2353,7 +2608,7 @@ export default function App() {
                                                                 disabled={index === 0}
                                                                 className={`px-2 py-1 rounded text-xs transition ${
                                                                     index === 0
-                                                                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
                                                                         : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
                                                                 }`}
                                                                 title="Move Down (towards bottom of canvas)"
@@ -2367,7 +2622,7 @@ export default function App() {
                                                         value={el.text}
                                                         onChange={(e) => updateTextElement(el.id, { text: e.target.value })}
                                                         onFocus={() => setFocusedTextboxId(el.id)}
-                                                        className={`w-full p-2 border rounded mb-2 text-xs md:text-sm resize-none overflow-hidden ${focusedTextboxId === el.id ? 'border-blue-400' : 'border-gray-300'}`}
+                                                        className={`w-full p-2 border rounded mb-2 text-xs md:text-sm resize-none overflow-hidden ${focusedTextboxId === el.id ? 'border-blue-400' : 'border-gray-600'}`}
                                                         rows={Math.max(3, el.text.split('\n').length + Math.ceil(el.text.length / 60))}
                                                     />
 
@@ -2379,14 +2634,14 @@ export default function App() {
                                                             onChange={(e) => updateTextElement(el.id, { useCustomSettings: e.target.checked })}
                                                             className="w-4 h-4 text-blue-600"
                                                         />
-                                                        <span className="text-xs text-gray-700 font-medium">Use Custom Formatting</span>
+                                                        <span className="text-xs text-gray-200 font-medium">Use Custom Formatting</span>
                                                     </label>
 
                                                     {el.useCustomSettings && (
                                                         <>
                                                     <div className="grid grid-cols-2 gap-2 mb-2">
                                                         <div>
-                                                            <label className="text-xs text-gray-600">Size</label>
+                                                            <label className="text-xs text-gray-300">Size</label>
                                                             <input
                                                                 type="text"
                                                                 value={el.fontSize === '' ? '' : (typeof el.fontSize === 'number' ? el.fontSize : '')}
@@ -2402,17 +2657,17 @@ export default function App() {
                                                                 className={`w-full p-1 border-2 rounded text-xs md:text-sm ${
                                                                     el.fontSize === '' || typeof el.fontSize !== 'number'
                                                                         ? 'border-red-600 bg-red-100'
-                                                                        : 'border-gray-300'
+                                                                        : 'border-gray-600'
                                                                 }`}
                                                             />
                                                         </div>
                                                         <div>
-                                                            <label className="text-xs text-gray-600">Color</label>
+                                                            <label className="text-xs text-gray-300">Color</label>
                                                             <input
                                                                 type="color"
                                                                 value={el.color}
                                                                 onChange={(e) => updateTextElement(el.id, { color: e.target.value })}
-                                                                className="w-full h-8 border border-gray-300 rounded"
+                                                                className="w-full h-8 border border-gray-600 rounded"
                                                             />
                                                         </div>
                                                     </div>
@@ -2425,7 +2680,7 @@ export default function App() {
                                                             }
                                                             updateTextElement(el.id, updates);
                                                         }}
-                                                        className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm mb-2"
+                                                        className="w-full p-1 border border-gray-600 rounded text-xs md:text-sm mb-2"
                                                     >
                                                         <option value="Helvetica Neue">Helvetica Neue</option>
                                                         <option value="Singing Sans">Singing Sans</option>
@@ -2438,7 +2693,7 @@ export default function App() {
                                                         <option value="Impact">Impact</option>
                                                     </select>
                                                     <div className="mb-2">
-                                                        <label className="text-xs text-gray-600 mb-1 block">Font Style</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Font Style</label>
                                                         <div className="grid grid-cols-2 gap-2">
                                                             <button
                                                                 onClick={() => updateTextElement(el.id, {
@@ -2446,7 +2701,7 @@ export default function App() {
                                                                     fontStyle: 'normal'
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-xs font-medium transition ${
-                                                                    (el.fontWeight === 'normal' || !el.fontWeight) && (el.fontStyle === 'normal' || !el.fontStyle) ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                    (el.fontWeight === 'normal' || !el.fontWeight) && (el.fontStyle === 'normal' || !el.fontStyle) ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                                 }`}
                                                             >
                                                                 Normal
@@ -2457,7 +2712,7 @@ export default function App() {
                                                                     fontStyle: 'normal'
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-xs font-bold transition ${
-                                                                    el.fontWeight === 'bold' && (el.fontStyle === 'normal' || !el.fontStyle) ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                    el.fontWeight === 'bold' && (el.fontStyle === 'normal' || !el.fontStyle) ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                                 }`}
                                                             >
                                                                 Bold
@@ -2468,7 +2723,7 @@ export default function App() {
                                                                     fontStyle: 'italic'
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-xs italic transition ${
-                                                                    (el.fontWeight === 'normal' || !el.fontWeight) && el.fontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                    (el.fontWeight === 'normal' || !el.fontWeight) && el.fontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                                 }`}
                                                             >
                                                                 Italic
@@ -2479,7 +2734,7 @@ export default function App() {
                                                                     fontStyle: 'italic'
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-xs font-bold italic transition ${
-                                                                    el.fontWeight === 'bold' && el.fontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                    el.fontWeight === 'bold' && el.fontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                                 }`}
                                                             >
                                                                 Bold Italic
@@ -2487,7 +2742,7 @@ export default function App() {
                                                         </div>
                                                     </div>
                                                     <div className="mb-2">
-                                                        <label className="text-xs text-gray-600 mb-1 block">Alignment</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Alignment</label>
                                                         <div className="grid grid-cols-4 gap-1">
                                                             <button
                                                                 onClick={() => updateTextElement(el.id, {
@@ -2495,7 +2750,7 @@ export default function App() {
                                                                     justify: false
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                                    el.textAlign === 'left' && !el.justify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                    el.textAlign === 'left' && !el.justify ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                                 }`}
                                                                 title="Align Left"
                                                             >
@@ -2509,7 +2764,7 @@ export default function App() {
                                                                     justify: false
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                                    el.textAlign === 'center' && !el.justify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                    el.textAlign === 'center' && !el.justify ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                                 }`}
                                                                 title="Align Center"
                                                             >
@@ -2523,7 +2778,7 @@ export default function App() {
                                                                     justify: false
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                                    el.textAlign === 'right' && !el.justify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                    el.textAlign === 'right' && !el.justify ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                                 }`}
                                                                 title="Align Right"
                                                             >
@@ -2537,7 +2792,7 @@ export default function App() {
                                                                     justify: true
                                                                 })}
                                                                 className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                                    el.justify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                                    el.justify ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                                 }`}
                                                                 title="Justify"
                                                             >
@@ -2548,11 +2803,11 @@ export default function App() {
                                                         </div>
                                                     </div>
                                                     <div className="mb-2">
-                                                        <label className="text-xs text-gray-600 mb-1 block">Text Case</label>
+                                                        <label className="text-xs text-gray-300 mb-1 block">Text Case</label>
                                                         <select
                                                             value={el.textCase || 'default'}
                                                             onChange={(e) => updateTextElement(el.id, { textCase: e.target.value })}
-                                                            className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                            className="w-full p-1 border border-gray-600 rounded text-xs md:text-sm"
                                                         >
                                                             <option value="default">Default</option>
                                                             <option value="uppercase">UPPERCASE</option>
@@ -2576,10 +2831,10 @@ export default function App() {
                                         </div>
 
                                         {/* Global Text Formatting */}
-                                        <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                        <div className="mb-4 p-3 bg-gray-900 rounded-lg border border-gray-600">
                                             <button
                                                 onClick={() => setShowGlobalFormatting(!showGlobalFormatting)}
-                                                className="w-full flex items-center justify-between text-sm font-semibold mb-2 text-gray-700 hover:text-gray-900 transition py-1"
+                                                className="w-full flex items-center justify-between text-sm font-semibold mb-2 text-gray-200 hover:text-white transition py-1"
                                             >
                                                 <span>Global Formatting</span>
                                                 <svg
@@ -2596,7 +2851,7 @@ export default function App() {
                                                 <>
                                             <div className="grid grid-cols-2 gap-2 mb-2">
                                                 <div>
-                                                    <label className="text-xs text-gray-600">Size</label>
+                                                    <label className="text-xs text-gray-300">Size</label>
                                                     <input
                                                         type="text"
                                                         value={globalFontSize === '' ? '' : (typeof globalFontSize === 'number' ? globalFontSize : '')}
@@ -2612,23 +2867,23 @@ export default function App() {
                                                         className={`w-full p-1 border-2 rounded text-xs md:text-sm ${
                                                             globalFontSize === '' || typeof globalFontSize !== 'number'
                                                                 ? 'border-red-600 bg-red-100'
-                                                                : 'border-gray-300'
+                                                                : 'border-gray-600'
                                                         }`}
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="text-xs text-gray-600">Color</label>
+                                                    <label className="text-xs text-gray-300">Color</label>
                                                     <input
                                                         type="color"
                                                         value={globalColor}
                                                         onChange={(e) => setGlobalColor(e.target.value)}
-                                                        className="w-full p-1 border border-gray-300 rounded h-8"
+                                                        className="w-full p-1 border border-gray-600 rounded h-8"
                                                     />
                                                 </div>
                                             </div>
 
                                             <div className="mb-2">
-                                                <label className="text-xs text-gray-600">Font Family</label>
+                                                <label className="text-xs text-gray-300">Font Family</label>
                                                 <select
                                                     value={globalFontFamily}
                                                     onChange={(e) => {
@@ -2637,7 +2892,7 @@ export default function App() {
                                                             setGlobalTextCase('default');
                                                         }
                                                     }}
-                                                    className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                    className="w-full p-1 border border-gray-600 rounded text-xs md:text-sm"
                                                 >
                                                     <option value="Helvetica Neue">Helvetica Neue</option>
                                                     <option value="Singing Sans">Singing Sans</option>
@@ -2652,7 +2907,7 @@ export default function App() {
                                             </div>
 
                                             <div className="mb-2">
-                                                <label className="text-xs text-gray-600 mb-1 block">Font Style</label>
+                                                <label className="text-xs text-gray-300 mb-1 block">Font Style</label>
                                                 <div className="grid grid-cols-2 gap-2">
                                                     <button
                                                         onClick={() => {
@@ -2660,7 +2915,7 @@ export default function App() {
                                                             setGlobalFontStyle('normal');
                                                         }}
                                                         className={`px-2 py-2 rounded text-xs font-medium transition ${
-                                                            globalFontWeight === 'normal' && globalFontStyle === 'normal' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                            globalFontWeight === 'normal' && globalFontStyle === 'normal' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                         }`}
                                                     >
                                                         Normal
@@ -2671,7 +2926,7 @@ export default function App() {
                                                             setGlobalFontStyle('normal');
                                                         }}
                                                         className={`px-2 py-2 rounded text-xs font-bold transition ${
-                                                            globalFontWeight === 'bold' && globalFontStyle === 'normal' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                            globalFontWeight === 'bold' && globalFontStyle === 'normal' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                         }`}
                                                     >
                                                         Bold
@@ -2682,7 +2937,7 @@ export default function App() {
                                                             setGlobalFontStyle('italic');
                                                         }}
                                                         className={`px-2 py-2 rounded text-xs italic transition ${
-                                                            globalFontWeight === 'normal' && globalFontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                            globalFontWeight === 'normal' && globalFontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                         }`}
                                                     >
                                                         Italic
@@ -2693,7 +2948,7 @@ export default function App() {
                                                             setGlobalFontStyle('italic');
                                                         }}
                                                         className={`px-2 py-2 rounded text-xs font-bold italic transition ${
-                                                            globalFontWeight === 'bold' && globalFontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                            globalFontWeight === 'bold' && globalFontStyle === 'italic' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                         }`}
                                                     >
                                                         Bold Italic
@@ -2702,7 +2957,7 @@ export default function App() {
                                             </div>
 
                                             <div className="mb-2">
-                                                <label className="text-xs text-gray-600 mb-1 block">Alignment</label>
+                                                <label className="text-xs text-gray-300 mb-1 block">Alignment</label>
                                                 <div className="grid grid-cols-4 gap-1">
                                                     <button
                                                         onClick={() => {
@@ -2710,7 +2965,7 @@ export default function App() {
                                                             setGlobalJustify(false);
                                                         }}
                                                         className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                            globalTextAlign === 'left' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                            globalTextAlign === 'left' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                         }`}
                                                         title="Align Left"
                                                     >
@@ -2724,7 +2979,7 @@ export default function App() {
                                                             setGlobalJustify(false);
                                                         }}
                                                         className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                            globalTextAlign === 'center' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                            globalTextAlign === 'center' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                         }`}
                                                         title="Align Center"
                                                     >
@@ -2738,7 +2993,7 @@ export default function App() {
                                                             setGlobalJustify(false);
                                                         }}
                                                         className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                            globalTextAlign === 'right' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                            globalTextAlign === 'right' && !globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                         }`}
                                                         title="Align Right"
                                                     >
@@ -2752,7 +3007,7 @@ export default function App() {
                                                             setGlobalJustify(true);
                                                         }}
                                                         className={`px-2 py-2 rounded text-sm font-medium transition flex items-center justify-center ${
-                                                            globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                            globalJustify ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                                                         }`}
                                                         title="Justify"
                                                     >
@@ -2764,11 +3019,11 @@ export default function App() {
                                             </div>
 
                                             <div className="mb-2">
-                                                <label className="text-xs text-gray-600">Text Case</label>
+                                                <label className="text-xs text-gray-300">Text Case</label>
                                                 <select
                                                     value={globalTextCase}
                                                     onChange={(e) => setGlobalTextCase(e.target.value)}
-                                                    className="w-full p-1 border border-gray-300 rounded text-xs md:text-sm"
+                                                    className="w-full p-1 border border-gray-600 rounded text-xs md:text-sm"
                                                 >
                                                     <option value="default">Default</option>
                                                     <option value="uppercase">UPPERCASE</option>
@@ -2781,7 +3036,7 @@ export default function App() {
                                         </div>
 
                                         <div className="mb-3">
-                                            <label className="text-xs text-gray-600 mb-1 block">Textbox Margin</label>
+                                            <label className="text-xs text-gray-300 mb-1 block">Textbox Margin</label>
                                             <input
                                                 type="number"
                                                 min="0"
@@ -2796,7 +3051,7 @@ export default function App() {
                                                         if (!isNaN(val)) setTextBoxMargin(val);
                                                     }
                                                 }}
-                                                className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                                className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
                                             />
                                         </div>
                                     </div>
