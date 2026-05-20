@@ -9,7 +9,7 @@ import { canvasRGBA } from 'stackblur-canvas';
 const BANNER_PRESETS = {
     breaking: { name: '🔴 Breaking', text: 'BREAKING', letterSpacing: 0.85, align: 'center', bgColor: '#850000' },
     custom: { name: 'Custom', text: 'Custom', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
-    // Countries (alphabetically sorted)
+    // Eurovision countries (alphabetically sorted)
     albania: { name: '🇦🇱 Albania', text: '🇦🇱 Albania', letterSpacing: 0, align: 'left', bgColor: '#c60a00' },
     andorra: { name: '🇦🇩 Andorra', text: '🇦🇩 Andorra', letterSpacing: 0, align: 'left', bgColor: '#102fab' },
     armenia: { name: '🇦🇲 Armenia', text: '🇦🇲 Armenia', letterSpacing: 0, align: 'left', bgColor: '#f0a902' },
@@ -63,6 +63,17 @@ const BANNER_PRESETS = {
     turkiye: { name: '🇹🇷 Türkiye', text: '🇹🇷 Türkiye', letterSpacing: 0, align: 'left', bgColor: '#a71f1f'},
     ukraine: { name: '🇺🇦 Ukraine', text: '🇺🇦 Ukraine', letterSpacing: 0, align: 'left', bgColor: '#d5ce00'},
     uk: { name: '🇬🇧 United Kingdom', text: '🇬🇧 United Kingdom', letterSpacing: 0, align: 'left', bgColor: '#0000ae'},
+    // Eurovision Asia countries (alphabetically sorted)
+    bangladesh: { name: '🇧🇩 Bangladesh', text: '🇧🇩 Bangladesh', letterSpacing: 0, align: 'left', bgColor: '#006a4e' },
+    bhutan: { name: '🇧🇹 Bhutan', text: '🇧🇹 Bhutan', letterSpacing: 0, align: 'left', bgColor: '#e47c1a' },
+    cambodia: { name: '🇰🇭 Cambodia', text: '🇰🇭 Cambodia', letterSpacing: 0, align: 'left', bgColor: '#032ea1' },
+    laos: { name: '🇱🇦 Laos', text: '🇱🇦 Laos', letterSpacing: 0, align: 'left', bgColor: '#ce1126' },
+    malaysia: { name: '🇲🇾 Malaysia', text: '🇲🇾 Malaysia', letterSpacing: 0, align: 'left', bgColor: '#cc0001' },
+    nepal: { name: '🇳🇵 Nepal', text: '🇳🇵 Nepal', letterSpacing: 0, align: 'left', bgColor: '#003893' },
+    philippines: { name: '🇵🇭 Philippines', text: '🇵🇭 Philippines', letterSpacing: 0, align: 'left', bgColor: '#0038a8' },
+    southkorea: { name: '🇰🇷 South Korea', text: '🇰🇷 South Korea', letterSpacing: 0, align: 'left', bgColor: '#003478' },
+    thailand: { name: '🇹🇭 Thailand', text: '🇹🇭 Thailand', letterSpacing: 0, align: 'left', bgColor: '#a51931' },
+    vietnam: { name: '🇻🇳 Vietnam', text: '🇻🇳 Vietnam', letterSpacing: 0, align: 'left', bgColor: '#da251d' },
 };
 
 export default function App() {
@@ -125,6 +136,7 @@ export default function App() {
             const [bannerOpacity, setBannerOpacity] = useState(0.6);
             const [selectedBannerPreset, setSelectedBannerPreset] = useState('custom');
             const [showBanner, setShowBanner] = useState(true);
+            const [photoCredit, setPhotoCredit] = useState('');
             const [showOverlay, setShowOverlay] = useState(true);
 
             const [imageScale, setImageScale] = useState(1);
@@ -188,7 +200,11 @@ export default function App() {
             };
 
             const dimensions = ASPECT_RATIOS[aspectRatio];
-            const maxCanvasWidth = typeof window !== 'undefined' ? Math.min(600, window.innerWidth - 40) : 600;
+            const maxCanvasWidthByColumn = typeof window !== 'undefined' ? Math.min(window.innerWidth >= 1024 ? 780 : 600, window.innerWidth - 40) : 600;
+            // ~190px reserved for aspect buttons, safe-area toggle, copy/export buttons, card padding
+            const maxCanvasHeightByViewport = typeof window !== 'undefined' ? window.innerHeight - 190 : 700;
+            const maxCanvasWidthByHeight = maxCanvasHeightByViewport * (dimensions.width / dimensions.height);
+            const maxCanvasWidth = Math.min(maxCanvasWidthByColumn, maxCanvasWidthByHeight);
             const scale = maxCanvasWidth / dimensions.width;
             const canvasHeight = dimensions.height * scale;
 
@@ -253,7 +269,8 @@ export default function App() {
                             document.fonts.load('700 40px "Helvetica Neue"'),
                             document.fonts.load('italic 400 40px "Helvetica Neue"'),
                             document.fonts.load('italic 700 40px "Helvetica Neue"'),
-                            document.fonts.load('40px "Singing Sans"')
+                            document.fonts.load('40px "Singing Sans"'),
+                            document.fonts.load('400 20px "Inter"')
                         ]);
                         setFontsLoaded(true);
                     } catch (error) {
@@ -713,21 +730,29 @@ export default function App() {
                                 allLines.push('');
                                 return;
                             }
-                            const words = paragraph.split(' ');
-                            let currentLine = '';
-                            words.forEach(word => {
-                                const testLine = currentLine + (currentLine ? ' ' : '') + word;
-                                const metrics = ctx.measureText(testLine);
-                                if (metrics.width > maxWidth && currentLine !== '') {
-                                    allLines.push(currentLine);
-                                    currentLine = word;
-                                } else {
-                                    currentLine = testLine;
+                            const mdSegs = parseMarkdown(paragraph);
+                            let lineWidth = 0;
+                            let lineHasWords = false;
+                            const flushLine = () => { allLines.push('x'); lineWidth = 0; lineHasWords = false; };
+                            for (const seg of mdSegs) {
+                                const segWeight = seg.bold ? 'bold' : fontWeight;
+                                const segStyle = seg.italic ? 'italic' : fontStyle;
+                                ctx.font = `${segStyle} ${segWeight} ${fontSize}px ${fontFamily}`;
+                                for (const word of seg.text.split(' ')) {
+                                    if (word === '') continue;
+                                    const prefix = lineHasWords ? ' ' : '';
+                                    const w = ctx.measureText(prefix + word).width;
+                                    if (lineHasWords && lineWidth + w > maxWidth) {
+                                        flushLine();
+                                        lineWidth = ctx.measureText(word).width;
+                                        lineHasWords = true;
+                                    } else {
+                                        lineWidth += w;
+                                        lineHasWords = true;
+                                    }
                                 }
-                            });
-                            if (currentLine) {
-                                allLines.push(currentLine);
                             }
+                            if (lineHasWords) flushLine();
                         });
                         return allLines;
                     };
@@ -791,94 +816,53 @@ export default function App() {
                     // Apply text case transformation
                     const transformedText = transformTextCase(el.text, textCase);
 
-                    // Parse markdown syntax
-                    const parseMarkdown = (text) => {
-                        const segments = [];
-                        let remaining = text;
-
-                        while (remaining.length > 0) {
-                            // Try to match ***text*** (bold italic)
-                            let match = remaining.match(/^\*\*\*(.+?)\*\*\*/);
-                            if (match) {
-                                segments.push({ text: match[1], bold: true, italic: true });
-                                remaining = remaining.substring(match[0].length);
-                                continue;
-                            }
-
-                            // Try to match **text** (bold)
-                            match = remaining.match(/^\*\*(.+?)\*\*/);
-                            if (match) {
-                                segments.push({ text: match[1], bold: true, italic: false });
-                                remaining = remaining.substring(match[0].length);
-                                continue;
-                            }
-
-                            // Try to match *text* (italic)
-                            match = remaining.match(/^\*(.+?)\*/);
-                            if (match) {
-                                segments.push({ text: match[1], bold: false, italic: true });
-                                remaining = remaining.substring(match[0].length);
-                                continue;
-                            }
-
-                            // No match - take one character as plain text
-                            const nextAsterisk = remaining.substring(1).search(/\*/);
-                            const plainText = nextAsterisk === -1
-                                ? remaining
-                                : remaining.substring(0, nextAsterisk + 1);
-
-                            segments.push({ text: plainText, bold: false, italic: false });
-                            remaining = remaining.substring(plainText.length);
-                        }
-
-                        return segments.length > 0 ? segments : [{ text, bold: false, italic: false }];
-                    };
-
-                    const wrapText = (text, maxWidth) => {
-                        // First split by manual line breaks
+                    const wrapMarkdownSegments = (text, maxWidth) => {
                         const paragraphs = text.split('\n');
                         const allLines = [];
-
                         paragraphs.forEach(paragraph => {
-                            // Handle empty lines (preserve line breaks)
                             if (paragraph.trim() === '') {
-                                allLines.push('');
+                                allLines.push([{ text: '', bold: false, italic: false }]);
                                 return;
                             }
-
-                            // Simple word-based wrapping
-                            const words = paragraph.split(' ');
-                            let currentLine = '';
-
-                            words.forEach(word => {
-                                const testLine = currentLine + (currentLine ? ' ' : '') + word;
-
-                                // Measure with current font
-                                ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
-                                const metrics = ctx.measureText(testLine);
-
-                                if (metrics.width > maxWidth && currentLine !== '') {
-                                    allLines.push(currentLine);
-                                    currentLine = word;
-                                } else {
-                                    currentLine = testLine;
+                            const mdSegs = parseMarkdown(paragraph);
+                            let lineSegs = [];
+                            let lineWidth = 0;
+                            const flushLine = () => { allLines.push(lineSegs); lineSegs = []; lineWidth = 0; };
+                            for (const seg of mdSegs) {
+                                const segWeight = seg.bold ? 'bold' : fontWeight;
+                                const segStyle = seg.italic ? 'italic' : fontStyle;
+                                ctx.font = `${segStyle} ${segWeight} ${fontSize}px ${fontFamily}`;
+                                for (const word of seg.text.split(' ')) {
+                                    if (word === '') continue;
+                                    const hasContent = lineWidth > 0 || lineSegs.length > 0;
+                                    const prefix = hasContent ? ' ' : '';
+                                    const w = ctx.measureText(prefix + word).width;
+                                    if (hasContent && lineWidth + w > maxWidth) {
+                                        flushLine();
+                                        lineSegs = [{ text: word, bold: seg.bold, italic: seg.italic }];
+                                        lineWidth = ctx.measureText(word).width;
+                                    } else {
+                                        const last = lineSegs[lineSegs.length - 1];
+                                        if (last && last.bold === seg.bold && last.italic === seg.italic) {
+                                            last.text += prefix + word;
+                                        } else {
+                                            lineSegs.push({ text: prefix + word, bold: seg.bold, italic: seg.italic });
+                                        }
+                                        lineWidth += ctx.measureText(prefix + word).width;
+                                    }
                                 }
-                            });
-
-                            if (currentLine) {
-                                allLines.push(currentLine);
                             }
+                            if (lineSegs.length > 0) flushLine();
                         });
-
                         return allLines;
                     };
 
                     // Calculate available width for text (textbox width minus margins)
                     const availableTextWidth = 965 - (textMargin * 2);
-                    const lines = wrapText(transformedText, availableTextWidth);
+                    const mdLines = wrapMarkdownSegments(transformedText, availableTextWidth);
 
                     // Calculate text block dimensions
-                    const totalTextHeight = lines.length * lineHeight;
+                    const totalTextHeight = mdLines.length * lineHeight;
 
                     // Set fixed width to 965px
                     let textBoxWidth = 965;
@@ -977,14 +961,13 @@ export default function App() {
 
                     // Draw lines from top to bottom with markdown support
                     const renderLines = async () => {
-                        for (let i = 0; i < lines.length; i++) {
-                            const line = lines[i];
+                        for (let i = 0; i < mdLines.length; i++) {
+                            const lineSegments = mdLines[i];
                             const lineY = textStartY + (i * lineHeight);
-                            const segments = parseMarkdown(line);
 
                             // Calculate total line width for alignment (including emojis)
                             let totalLineWidth = 0;
-                            for (const seg of segments) {
+                            for (const seg of lineSegments) {
                                 const segWeight = seg.bold ? 'bold' : fontWeight;
                                 const segStyle = seg.italic ? 'italic' : fontStyle;
                                 ctx.font = `${segStyle} ${segWeight} ${fontSize}px ${fontFamily}`;
@@ -1003,13 +986,12 @@ export default function App() {
 
                             // Draw each segment with its styling
                             let currentX = startX;
-                            for (const seg of segments) {
+                            for (const seg of lineSegments) {
                                 const segWeight = seg.bold ? 'bold' : fontWeight;
                                 const segStyle = seg.italic ? 'italic' : fontStyle;
                                 ctx.font = `${segStyle} ${segWeight} ${fontSize}px ${fontFamily}`;
                                 ctx.textAlign = 'left';
 
-                                // Render text with emoji support
                                 const width = await renderTextWithEmoji(seg.text, currentX, lineY, fontSize, fontFamily);
                                 currentX += width;
                             }
@@ -1175,6 +1157,20 @@ export default function App() {
                     }
                 }
 
+                // Draw photo credit rotated vertically along the left edge
+                if (photoCredit.trim()) {
+                    ctx.save();
+                    ctx.globalAlpha = 0.5;
+                    ctx.fillStyle = '#ffffff';
+                    ctx.font = '400 20px Inter, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.translate(15, dimensions.height / 2);
+                    ctx.rotate(-Math.PI / 2);
+                    ctx.fillText(photoCredit, 0, 0);
+                    ctx.restore();
+                }
+
                 // Draw 3:4 safe area centered on all aspect ratios if enabled (only for display, not export)
                 // This is drawn LAST so it overlays everything
                 if (showSafeMargins && includeSafeMargins) {
@@ -1266,7 +1262,7 @@ export default function App() {
                 if (fontsLoaded) {
                     renderCanvas().catch(err => console.error('Render error:', err));
                 }
-            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation, textBoxMargin, globalFontSize, globalColor, globalFontFamily, globalFontWeight, globalFontStyle, globalTextAlign, globalJustify, globalTextCase, bannerText, bannerLetterSpacing, bannerColor, bannerFontSize, bannerFontFamily, bannerFontWeight, bannerFontStyle, bannerTextAlign, bannerTextCase, bannerOpacity, showBanner, showOverlay, fontsLoaded]);
+            }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation, textBoxMargin, globalFontSize, globalColor, globalFontFamily, globalFontWeight, globalFontStyle, globalTextAlign, globalJustify, globalTextCase, bannerText, bannerLetterSpacing, bannerColor, bannerFontSize, bannerFontFamily, bannerFontWeight, bannerFontStyle, bannerTextAlign, bannerTextCase, bannerOpacity, showBanner, showOverlay, photoCredit, fontsLoaded]);
 
             // Reposition text elements when aspect ratio changes
             useEffect(() => {
@@ -1401,7 +1397,7 @@ export default function App() {
             };
 
             return (
-                <div className="min-h-screen bg-gray-50">
+                <div className="bg-gray-50">
                     <div className="max-w-7xl mx-auto py-4">
                         <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:px-4">
                             {/* Canvas - Always visible */}
@@ -2006,7 +2002,7 @@ export default function App() {
                                                     >
                                                         <option value="breaking">🔴 Breaking</option>
                                                         <option value="custom">Custom</option>
-                                                        <optgroup label="Countries">
+                                                        <optgroup label="Eurovision">
                                                             <option value="albania">🇦🇱 Albania</option>
                                                             <option value="andorra">🇦🇩 Andorra</option>
                                                             <option value="armenia">🇦🇲 Armenia</option>
@@ -2060,6 +2056,18 @@ export default function App() {
                                                             <option value="turkiye">🇹🇷 Türkiye</option>
                                                             <option value="ukraine">🇺🇦 Ukraine</option>
                                                             <option value="uk">🇬🇧 United Kingdom</option>
+                                                        </optgroup>
+                                                        <optgroup label="Eurovision Asia">
+                                                            <option value="bangladesh">🇧🇩 Bangladesh</option>
+                                                            <option value="bhutan">🇧🇹 Bhutan</option>
+                                                            <option value="cambodia">🇰🇭 Cambodia</option>
+                                                            <option value="laos">🇱🇦 Laos</option>
+                                                            <option value="malaysia">🇲🇾 Malaysia</option>
+                                                            <option value="nepal">🇳🇵 Nepal</option>
+                                                            <option value="philippines">🇵🇭 Philippines</option>
+                                                            <option value="southkorea">🇰🇷 South Korea</option>
+                                                            <option value="thailand">🇹🇭 Thailand</option>
+                                                            <option value="vietnam">🇻🇳 Vietnam</option>
                                                         </optgroup>
                                                     </select>
                                                 </div>
@@ -2263,6 +2271,19 @@ export default function App() {
                                                     </div>
                                                 </div>
                                             </div>
+                                    </div>
+
+                                    {/* Photo Credit */}
+                                    <div className={`${activeTab === 'text' || activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-white rounded-lg shadow-lg p-2`}>
+                                        <h2 className="text-base md:text-lg font-semibold mb-2">Photo Credit</h2>
+                                        <input
+                                            type="text"
+                                            value={photoCredit}
+                                            onChange={(e) => setPhotoCredit(e.target.value)}
+                                            placeholder="e.g. © Corinne Cumming / EBU"
+                                            className="w-full p-2 border border-gray-300 rounded text-xs md:text-sm"
+                                        />
+                                        <p className="text-xs text-gray-400 mt-1">Rendered vertically along the left edge at 50% opacity</p>
                                     </div>
 
                                     {/* Text Controls - Desktop: always show, Mobile: show in 'text' tab */}
