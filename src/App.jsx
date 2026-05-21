@@ -93,6 +93,8 @@ const FLAG_TO_PRESET = {
     NP:'nepal', PH:'philippines', KR:'southkorea', TH:'thailand', VN:'vietnam',
 };
 
+const CORS_PROXY = 'https://escdiscord-cors-proxy.100gradifrnht.workers.dev';
+
 export default function App() {
             const [aspectRatio, setAspectRatio] = useState('4:5');
             const [baseImage, setBaseImage] = useState(null);
@@ -324,27 +326,24 @@ export default function App() {
                 }
             };
 
-            // Loads an external URL as a blob: URL so the canvas is never tainted (blur works).
-            // cache:'reload' forces a fresh CORS-aware request, bypassing any cached non-CORS entry.
-            // Falls back to a direct Image load if the server doesn't support CORS fetch.
-            const loadExternalImage = (url) =>
-                fetch(url, { cache: 'reload' })
+            // Fetches an external image via CORS proxy so the canvas is never tainted.
+            // Proxy adds Access-Control-Allow-Origin: * that cdn.bsky.app omits.
+            const loadExternalImage = (url) => {
+                const proxied = `${CORS_PROXY}?url=${encodeURIComponent(url)}`;
+                return fetch(proxied)
                     .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
                     .then(blob => new Promise((resolve, reject) => {
-                        // Some CDNs return application/octet-stream; coerce to image/jpeg so the blob URL loads
-                        const safeBlob = blob.type.startsWith('image/') ? blob : new Blob([blob], { type: 'image/jpeg' });
-                        const objUrl = URL.createObjectURL(safeBlob);
-                        const img = new Image();
-                        img.onload = () => { URL.revokeObjectURL(objUrl); resolve(img); };
-                        img.onerror = () => { URL.revokeObjectURL(objUrl); reject(); };
-                        img.src = objUrl;
-                    }))
-                    .catch(() => new Promise((resolve, reject) => {
-                        const img = new Image();
-                        img.onload = () => resolve(img);
-                        img.onerror = reject;
-                        img.src = url;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            const img = new Image();
+                            img.onload = () => resolve(img);
+                            img.onerror = reject;
+                            img.src = reader.result;
+                        };
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
                     }));
+            };
 
             const handleBaseImageUrlLoad = () => {
                 const url = baseImageUrl.trim();
@@ -422,6 +421,7 @@ export default function App() {
                     const allImages = posts.flatMap(p => p.images);
                     setBskyData({ posts, allImages });
                     if (allImages.length > 0) setBskySelectedImageIdx(0);
+                    await applyBskyImport({ posts, allImages }, allImages.length > 0 ? 0 : null, null);
                 } catch (err) {
                     setBskyError(err.message || 'Import failed');
                 } finally {
@@ -441,12 +441,12 @@ export default function App() {
                 reader.readAsDataURL(file);
             };
 
-            const applyBskyImport = async () => {
-                if (!bskyData) return;
+            const applyBskyImport = async (data = bskyData, selectedIdx = bskySelectedImageIdx, customImage = bskyCustomImage) => {
+                if (!data) return;
                 // Load image first so all state updates fire in one batch
-                let imgToSet = bskyCustomImage ?? null;
-                if (!imgToSet && bskySelectedImageIdx !== null && bskyData.allImages[bskySelectedImageIdx]) {
-                    imgToSet = await loadExternalImage(bskyData.allImages[bskySelectedImageIdx].fullsize).catch(() => null);
+                let imgToSet = customImage ?? null;
+                if (!imgToSet && selectedIdx !== null && data.allImages[selectedIdx]) {
+                    imgToSet = await loadExternalImage(data.allImages[selectedIdx].fullsize).catch(() => null);
                 }
                 if (imgToSet) {
                     setBaseImage(imgToSet);
@@ -455,8 +455,8 @@ export default function App() {
                     setImageRotation(0);
                 }
                 // Auto-set banner preset from first emoji of first post
-                if (bskyData.posts.length > 0) {
-                    const chars = [...bskyData.posts[0].text];
+                if (data.posts.length > 0) {
+                    const chars = [...data.posts[0].text];
                     const cp0 = chars[0]?.codePointAt(0);
                     const cp1 = chars[1]?.codePointAt(0);
                     const isRI = cp => cp >= 0x1F1E6 && cp <= 0x1F1FF;
@@ -475,7 +475,7 @@ export default function App() {
                     text.replace(/^([\p{Emoji_Presentation}\p{Regional_Indicator}]\s*)+/u, '');
 
                 const bottomMargin = aspectRatio === '9:16' ? 112 : 37;
-                setTextElements(bskyData.posts.map((post, i) => ({
+                setTextElements(data.posts.map((post, i) => ({
                     id: Date.now() + i,
                     text: stripLeadingEmojis(post.text),
                     x: dimensions.width / 2,
@@ -796,37 +796,18 @@ export default function App() {
                             blurDrawHeight = dimensions.width / blurImgAspect;
                         }
 
-                        // Primary: stackblur via temp canvas (works on all browsers incl. iOS Safari)
-                        // Falls back to ctx.filter for browsers where stackblur fails (e.g. tainted canvas)
-                        let stackblurDone = false;
-                        try {
-                            const tempCanvas = document.createElement('canvas');
-                            tempCanvas.width = dimensions.width;
-                            tempCanvas.height = dimensions.height;
-                            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-                            tempCtx.save();
-                            tempCtx.translate(centerX + blurImgX, centerY + blurImgY);
-                            tempCtx.rotate((blurImageRotation * Math.PI) / 180);
-                            tempCtx.scale(blurImageScale, blurImageScale);
-                            tempCtx.drawImage(blurSourceImage, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
-                            tempCtx.restore();
-                            canvasRGBA(tempCanvas, 0, 0, dimensions.width, dimensions.height, blurIntensity);
-                            ctx.drawImage(tempCanvas, 0, 0);
-                            stackblurDone = true;
-                        } catch (_) { /* tainted canvas — fall through */ }
-
-                        // Fallback: ctx.filter (no pixel reads, works on modern browsers)
-                        if (!stackblurDone) {
-                            const pad = blurIntensity * 2;
-                            ctx.save();
-                            ctx.filter = `blur(${blurIntensity}px)`;
-                            ctx.translate(centerX + blurImgX, centerY + blurImgY);
-                            ctx.rotate((blurImageRotation * Math.PI) / 180);
-                            ctx.scale(blurImageScale, blurImageScale);
-                            ctx.drawImage(blurSourceImage, -(blurDrawWidth / 2 + pad), -(blurDrawHeight / 2 + pad), blurDrawWidth + pad * 2, blurDrawHeight + pad * 2);
-                            ctx.filter = 'none';
-                            ctx.restore();
-                        }
+                        const tempCanvas = document.createElement('canvas');
+                        tempCanvas.width = dimensions.width;
+                        tempCanvas.height = dimensions.height;
+                        const tempCtx = tempCanvas.getContext('2d');
+                        tempCtx.save();
+                        tempCtx.translate(centerX + blurImgX, centerY + blurImgY);
+                        tempCtx.rotate((blurImageRotation * Math.PI) / 180);
+                        tempCtx.scale(blurImageScale, blurImageScale);
+                        tempCtx.drawImage(blurSourceImage, -blurDrawWidth / 2, -blurDrawHeight / 2, blurDrawWidth, blurDrawHeight);
+                        tempCtx.restore();
+                        canvasRGBA(tempCanvas, 0, 0, dimensions.width, dimensions.height, blurIntensity);
+                        ctx.drawImage(tempCanvas, 0, 0);
                     }
                 }
 
