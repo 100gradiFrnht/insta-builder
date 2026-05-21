@@ -402,9 +402,7 @@ export default function App() {
 
                     if (flatPosts.length === 0) throw new Error('No posts found from this author');
 
-                    // Skip the last post only when there are 2+ posts (last is always the news source link)
-                    const trimmed = flatPosts.length > 1 ? flatPosts.slice(0, -1) : flatPosts;
-                    const posts = trimmed.map(post => {
+                    const posts = flatPosts.map(post => {
                         const images = [];
                         const embed = post.embed;
                         if (embed?.$type === 'app.bsky.embed.images#view') {
@@ -415,8 +413,9 @@ export default function App() {
                                 media.images.forEach(img => images.push({ fullsize: img.fullsize, thumb: img.thumb }));
                             }
                         }
-                        return { text: post.record.text, images };
-                    });
+                        const text = post.record.text.replace(/\s*More:[\s\S]*$/i, '').trim();
+                        return { text, images };
+                    }).filter(post => post.text || post.images.length > 0);
 
                     const allImages = posts.flatMap(p => p.images);
                     setBskyData({ posts, allImages });
@@ -475,7 +474,7 @@ export default function App() {
                     text.replace(/^([\p{Emoji_Presentation}\p{Regional_Indicator}]\s*)+/u, '');
 
                 const bottomMargin = aspectRatio === '9:16' ? 112 : 37;
-                setTextElements(data.posts.map((post, i) => ({
+                setTextElements([...data.posts].reverse().map((post, i) => ({
                     id: Date.now() + i,
                     text: stripLeadingEmojis(post.text),
                     x: dimensions.width / 2,
