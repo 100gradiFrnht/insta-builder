@@ -160,6 +160,7 @@ export default function App() {
             // Bluesky import
             const [bskyUrl, setBskyUrl] = useState('');
             const [baseImageUrl, setBaseImageUrl] = useState('');
+            const [baseImageUrlError, setBaseImageUrlError] = useState('');
             const [bskyLoading, setBskyLoading] = useState(false);
             const [bskyError, setBskyError] = useState('');
             const [bskyData, setBskyData] = useState(null); // { posts: [{text, images}], allImages: [{fullsize, thumb}] }
@@ -327,7 +328,6 @@ export default function App() {
             };
 
             // Fetches an external image via CORS proxy so the canvas is never tainted.
-            // Proxy adds Access-Control-Allow-Origin: * that cdn.bsky.app omits.
             const loadExternalImage = (url) => {
                 const proxied = `${CORS_PROXY}?url=${encodeURIComponent(url)}`;
                 return fetch(proxied)
@@ -348,11 +348,14 @@ export default function App() {
             const handleBaseImageUrlLoad = () => {
                 const url = baseImageUrl.trim();
                 if (!url) return;
+                setBaseImageUrlError('');
                 loadExternalImage(url).then(img => {
                     setBaseImage(img);
                     setImageScale(1);
                     setImagePosition({ x: 0, y: 0 });
-                }).catch(() => {});
+                }).catch(() => {
+                    setBaseImageUrlError("Can't load this image — the server blocked the request. Download it and upload locally instead.");
+                });
             };
 
             const importFromBluesky = async () => {
@@ -1981,6 +1984,7 @@ export default function App() {
                                                 className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700 disabled:opacity-40 transition"
                                             >Load</button>
                                         </div>
+                                        {baseImageUrlError && <p className="text-xs text-red-400 mb-2">{baseImageUrlError}</p>}
 
                                         {/* Blur Background Options */}
                                         <div className="mt-3 pt-3 border-t border-gray-600">
