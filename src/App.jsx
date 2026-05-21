@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { flushSync } from 'react-dom';
 import { canvasRGBA } from 'stackblur-canvas';
 import { ASPECT_RATIOS, OVERLAY_PATHS } from './utils/constants';
 import { transformTextCase } from './utils/textTransform';
@@ -94,6 +95,29 @@ const FLAG_TO_PRESET = {
 };
 
 const CORS_PROXY = 'https://escdiscord-cors-proxy.100gradifrnht.workers.dev';
+
+const defaultSlide = () => ({
+    baseImage: null, imageScale: 1,
+    imagePosition: { x: 0, y: 0 }, imageRotation: 0,
+    textElements: [{
+        id: Date.now(), text: 'Your text here', x: 540, y: 1194,
+        useCustomSettings: false, fontSize: 40, color: '#ffffff',
+        fontFamily: 'Helvetica Neue', fontWeight: 'normal', fontStyle: 'normal',
+        textAlign: 'left', textCase: 'default', justify: false, maxWidth: 980,
+    }],
+    bannerText: 'Custom', bannerLetterSpacing: 0, bannerColor: '#000f85',
+    bannerFontSize: 40, bannerFontFamily: 'Helvetica Neue', bannerFontWeight: 'bold',
+    bannerFontStyle: 'normal', bannerTextAlign: 'left', bannerTextCase: 'uppercase',
+    bannerOpacity: 0.6, selectedBannerPreset: 'custom', showBanner: true,
+    showOverlay: true, overlayColor: 'white',
+    useBlurBackground: false, blurIntensity: 50, blurImage: null,
+    useBaseImageForBlur: true, blurImageScale: 1,
+    blurImagePosition: { x: 0, y: 0 }, blurImageRotation: 0,
+    photoCredit: '',
+    bskyUrl: '', bskyData: null, bskySelectedImageIdx: null,
+    bskyCustomImage: null, bskyError: '',
+    baseImageUrl: '', baseImageUrlError: '',
+});
 
 export default function App() {
             const [aspectRatio, setAspectRatio] = useState('4:5');
@@ -194,6 +218,9 @@ export default function App() {
             const [blurImageRotation, setBlurImageRotation] = useState(0);
             const [fontsLoaded, setFontsLoaded] = useState(false);
 
+            const [slides, setSlides] = useState([defaultSlide()]);
+            const [currentSlideIdx, setCurrentSlideIdx] = useState(0);
+
             const canvasRef = useRef(null);
             const containerRef = useRef(null);
 
@@ -230,8 +257,8 @@ export default function App() {
 
             const dimensions = ASPECT_RATIOS[aspectRatio];
             const maxCanvasWidthByColumn = typeof window !== 'undefined' ? Math.min(window.innerWidth >= 1024 ? 780 : 600, window.innerWidth - 40) : 600;
-            // ~190px reserved for aspect buttons, safe-area toggle, copy/export buttons, card padding
-            const maxCanvasHeightByViewport = typeof window !== 'undefined' ? window.innerHeight - 190 : 700;
+            // ~230px reserved for aspect buttons, slide tabs, safe-area toggle, copy/export buttons, card padding
+            const maxCanvasHeightByViewport = typeof window !== 'undefined' ? window.innerHeight - 230 : 700;
             const maxCanvasWidthByHeight = maxCanvasHeightByViewport * (dimensions.width / dimensions.height);
             const maxCanvasWidth = Math.min(maxCanvasWidthByColumn, maxCanvasWidthByHeight);
             const scale = maxCanvasWidth / dimensions.width;
@@ -325,6 +352,97 @@ export default function App() {
                     };
                     reader.readAsDataURL(file);
                 }
+            };
+
+            const captureSlide = () => ({
+                baseImage, imageScale, imagePosition, imageRotation, textElements,
+                bannerText, bannerLetterSpacing, bannerColor, bannerFontSize,
+                bannerFontFamily, bannerFontWeight, bannerFontStyle, bannerTextAlign,
+                bannerTextCase, bannerOpacity, selectedBannerPreset, showBanner,
+                showOverlay, overlayColor,
+                useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur,
+                blurImageScale, blurImagePosition, blurImageRotation,
+                photoCredit,
+                bskyUrl, bskyData, bskySelectedImageIdx, bskyCustomImage, bskyError,
+                baseImageUrl, baseImageUrlError,
+            });
+
+            const restoreSlide = (slide) => {
+                setBaseImage(slide.baseImage);
+                setImageScale(slide.imageScale);
+                setImagePosition(slide.imagePosition);
+                setImageRotation(slide.imageRotation);
+                setTextElements(slide.textElements);
+                setBannerText(slide.bannerText);
+                setBannerLetterSpacing(slide.bannerLetterSpacing);
+                setBannerColor(slide.bannerColor);
+                setBannerFontSize(slide.bannerFontSize);
+                setBannerFontFamily(slide.bannerFontFamily);
+                setBannerFontWeight(slide.bannerFontWeight);
+                setBannerFontStyle(slide.bannerFontStyle);
+                setBannerTextAlign(slide.bannerTextAlign);
+                setBannerTextCase(slide.bannerTextCase);
+                setBannerOpacity(slide.bannerOpacity);
+                setSelectedBannerPreset(slide.selectedBannerPreset);
+                setShowBanner(slide.showBanner);
+                setShowOverlay(slide.showOverlay);
+                setOverlayColor(slide.overlayColor);
+                setUseBlurBackground(slide.useBlurBackground);
+                setBlurIntensity(slide.blurIntensity);
+                setBlurImage(slide.blurImage);
+                setUseBaseImageForBlur(slide.useBaseImageForBlur);
+                setBlurImageScale(slide.blurImageScale);
+                setBlurImagePosition(slide.blurImagePosition);
+                setBlurImageRotation(slide.blurImageRotation);
+                setPhotoCredit(slide.photoCredit);
+                setBskyUrl(slide.bskyUrl);
+                setBskyData(slide.bskyData);
+                setBskySelectedImageIdx(slide.bskySelectedImageIdx);
+                setBskyCustomImage(slide.bskyCustomImage);
+                setBskyError(slide.bskyError);
+                setBaseImageUrl(slide.baseImageUrl);
+                setBaseImageUrlError(slide.baseImageUrlError);
+                imagePositionRef.current = slide.imagePosition;
+                imageScaleRef.current = slide.imageScale;
+            };
+
+            const switchSlide = (idx) => {
+                if (idx === currentSlideIdx) return;
+                setSlides(prev => {
+                    const updated = [...prev];
+                    updated[currentSlideIdx] = captureSlide();
+                    return updated;
+                });
+                restoreSlide(slides[idx]);
+                setCurrentSlideIdx(idx);
+            };
+
+            const addSlide = () => {
+                const fresh = defaultSlide();
+                const newIdx = slides.length;
+                setSlides(prev => {
+                    const updated = [...prev];
+                    updated[currentSlideIdx] = captureSlide();
+                    return [...updated, fresh];
+                });
+                restoreSlide(fresh);
+                setCurrentSlideIdx(newIdx);
+            };
+
+            const deleteSlide = (idx) => {
+                if (slides.length <= 1) return;
+                const saved = [...slides];
+                if (idx !== currentSlideIdx) saved[currentSlideIdx] = captureSlide();
+                const newSlides = saved.filter((_, i) => i !== idx);
+                let newIdx = currentSlideIdx;
+                if (idx === currentSlideIdx) {
+                    newIdx = Math.max(0, idx - 1);
+                    restoreSlide(newSlides[newIdx]);
+                } else if (idx < currentSlideIdx) {
+                    newIdx = currentSlideIdx - 1;
+                }
+                setSlides(newSlides);
+                setCurrentSlideIdx(newIdx);
             };
 
             // Fetches an external image via CORS proxy so the canvas is never tainted.
@@ -1455,6 +1573,10 @@ export default function App() {
                 }
             }, [baseImage, permanentOverlays, selectedOverlay, textElements, imageScale, imagePosition, imageRotation, aspectRatio, additionalOverlays, showSafeMargins, useBlurBackground, blurIntensity, blurImage, useBaseImageForBlur, blurImageScale, blurImagePosition, blurImageRotation, textBoxMargin, globalFontSize, globalColor, globalFontFamily, globalFontWeight, globalFontStyle, globalTextAlign, globalJustify, globalTextCase, bannerText, bannerLetterSpacing, bannerColor, bannerFontSize, bannerFontFamily, bannerFontWeight, bannerFontStyle, bannerTextAlign, bannerTextCase, bannerOpacity, showBanner, showOverlay, photoCredit, fontsLoaded]);
 
+            // Always points to the latest renderCanvas — used by exportAllSlides
+            const renderCanvasRef = useRef(renderCanvas);
+            useLayoutEffect(() => { renderCanvasRef.current = renderCanvas; });
+
             // Reposition text elements when aspect ratio changes
             useEffect(() => {
                 setTextElements(prev => prev.map(el => {
@@ -1518,6 +1640,45 @@ export default function App() {
                     alert('Failed to export image. Error: ' + error.message);
                     // Re-render with safe margins even on error
                     await renderCanvas(true);
+                }
+            };
+
+            const exportAllSlides = async () => {
+                const savedSlides = [...slides];
+                savedSlides[currentSlideIdx] = captureSlide();
+                const savedIdx = currentSlideIdx;
+                try {
+                    for (let i = 0; i < savedSlides.length; i++) {
+                        flushSync(() => {
+                            restoreSlide(savedSlides[i]);
+                            setCurrentSlideIdx(i);
+                        });
+                        await renderCanvasRef.current(false);
+                        const canvas = canvasRef.current;
+                        await new Promise((resolve, reject) => {
+                            canvas.toBlob(blob => {
+                                if (!blob) { reject(new Error('toBlob failed')); return; }
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement('a');
+                                link.download = `slide-${i + 1}-${Date.now()}.png`;
+                                link.href = url;
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                setTimeout(() => URL.revokeObjectURL(url), 100);
+                                resolve();
+                            }, 'image/png', 1.0);
+                        });
+                        await new Promise(r => setTimeout(r, 300));
+                    }
+                } catch (error) {
+                    alert('Export all failed: ' + error.message);
+                } finally {
+                    flushSync(() => {
+                        restoreSlide(savedSlides[savedIdx]);
+                        setCurrentSlideIdx(savedIdx);
+                    });
+                    await renderCanvasRef.current(true);
                 }
             };
 
@@ -1608,6 +1769,35 @@ export default function App() {
                                                 {value.label}
                                             </button>
                                         ))}
+                                    </div>
+
+                                    {/* Slide tabs */}
+                                    <div className="flex items-center gap-1 mb-3">
+                                        {slides.map((_, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => switchSlide(i)}
+                                                className={`px-3 py-1 rounded text-sm font-medium transition ${
+                                                    i === currentSlideIdx
+                                                        ? 'bg-blue-600 text-white'
+                                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                }`}
+                                            >
+                                                {i + 1}
+                                            </button>
+                                        ))}
+                                        <button
+                                            onClick={addSlide}
+                                            className="px-3 py-1 rounded text-sm font-medium bg-gray-700 text-gray-300 hover:bg-gray-600 transition"
+                                            title="Add slide"
+                                        >+</button>
+                                        {slides.length > 1 && (
+                                            <button
+                                                onClick={() => deleteSlide(currentSlideIdx)}
+                                                className="px-3 py-1 rounded text-sm font-medium bg-red-900 text-red-300 hover:bg-red-800 transition"
+                                                title="Delete current slide"
+                                            >Delete</button>
+                                        )}
                                     </div>
 
                                     {/* Safe margins toggle for all aspect ratios */}
@@ -1836,7 +2026,7 @@ export default function App() {
                                         </div>
                                     )}
 
-                                    <div className="grid grid-cols-2 gap-2 mt-3 md:mt-4">
+                                    <div className={`grid gap-2 mt-3 md:mt-4 ${slides.length > 1 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                         <button
                                             onClick={copyImage}
                                             className="bg-blue-600 text-white px-3 md:px-6 py-2 md:py-3 rounded-lg text-sm md:text-base font-semibold hover:bg-blue-700 transition"
@@ -1850,6 +2040,14 @@ export default function App() {
                                         >
                                             Export as PNG
                                         </button>
+                                        {slides.length > 1 && (
+                                            <button
+                                                onClick={exportAllSlides}
+                                                className="bg-green-800 text-white px-3 md:px-6 py-2 md:py-3 rounded-lg text-sm md:text-base font-semibold hover:bg-green-700 transition"
+                                            >
+                                                Export all
+                                            </button>
+                                        )}
                                     </div>
 
                                     {/* Mobile Controls Toggle */}
@@ -1922,7 +2120,16 @@ export default function App() {
                                                             <img
                                                                 key={i}
                                                                 src={img.thumb}
-                                                                onClick={() => { setBskySelectedImageIdx(i); setBskyCustomImage(null); }}
+                                                                onClick={() => {
+                                                                    setBskySelectedImageIdx(i);
+                                                                    setBskyCustomImage(null);
+                                                                    loadExternalImage(img.fullsize).then(loaded => {
+                                                                        setBaseImage(loaded);
+                                                                        setImageScale(1);
+                                                                        setImagePosition({ x: 0, y: 0 });
+                                                                        setImageRotation(0);
+                                                                    }).catch(() => {});
+                                                                }}
                                                                 className={`w-14 h-14 object-cover rounded cursor-pointer border-2 transition ${bskySelectedImageIdx === i && !bskyCustomImage ? 'border-blue-500' : 'border-transparent hover:border-gray-600'}`}
                                                                 alt=""
                                                             />
@@ -1947,12 +2154,7 @@ export default function App() {
                                                         ))}
                                                     </div>
                                                 </div>
-                                                <button
-                                                    onClick={applyBskyImport}
-                                                    className="w-full bg-green-600 text-white py-2 rounded-lg text-sm font-semibold hover:bg-green-700 transition"
-                                                >
-                                                    Apply to Canvas
-                                                </button>
+
                                             </div>
                                         )}
                                     </div>
