@@ -1755,7 +1755,8 @@ export default function App() {
                             {/* Canvas - Always visible */}
                             <div className="lg:col-span-2 canvas-wrapper">
                                 <div className="bg-gray-800 rounded-lg shadow-lg p-2 md:p-4 mx-2 md:mx-0 lg:sticky lg:top-4">
-                                    <div className="mb-3 flex flex-wrap gap-1 md:gap-2">
+                                    <div className="mb-3 flex flex-wrap items-center gap-1 md:gap-2">
+                                        <span className="text-sm text-gray-400 mr-1">Aspect ratio</span>
                                         {Object.entries(ASPECT_RATIOS).map(([key, value]) => (
                                             <button
                                                 key={key}
@@ -1773,6 +1774,7 @@ export default function App() {
 
                                     {/* Slide tabs */}
                                     <div className="flex items-center gap-1 mb-3">
+                                        <span className="text-sm text-gray-400 mr-1">Slides</span>
                                         {slides.map((_, i) => (
                                             <button
                                                 key={i}
