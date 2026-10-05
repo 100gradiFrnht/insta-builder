@@ -5,94 +5,9 @@ import { ASPECT_RATIOS, OVERLAY_PATHS } from './utils/constants';
 import { transformTextCase } from './utils/textTransform';
 import { parseMarkdown } from './utils/markdown';
 import { parseTextWithEmoji, loadEmojiImage } from './utils/emoji';
-
-// Banner tag presets
-const BANNER_PRESETS = {
-    breaking: { name: '🔴 Breaking', text: 'BREAKING', letterSpacing: 0.85, align: 'center', bgColor: '#850000' },
-    custom: { name: 'Custom', text: 'Custom', letterSpacing: 0, align: 'left', bgColor: '#000f85' },
-    // Eurovision countries (alphabetically sorted)
-    albania: { name: '🇦🇱 Albania', text: '🇦🇱 Albania', letterSpacing: 0, align: 'left', bgColor: '#c60a00' },
-    andorra: { name: '🇦🇩 Andorra', text: '🇦🇩 Andorra', letterSpacing: 0, align: 'left', bgColor: '#102fab' },
-    armenia: { name: '🇦🇲 Armenia', text: '🇦🇲 Armenia', letterSpacing: 0, align: 'left', bgColor: '#f0a902' },
-    australia: { name: '🇦🇺 Australia', text: '🇦🇺 Australia', letterSpacing: 0, align: 'left', bgColor: '#0000ca' },
-    austria: { name: '🇦🇹 Austria', text: '🇦🇹 Austria', letterSpacing: 0, align: 'left', bgColor: '#a70a0a' },
-    azerbaijan: { name: '🇦🇿 Azerbaijan', text: '🇦🇿 Azerbaijan', letterSpacing: 0, align: 'left', bgColor: '#13a8b0' },
-    belarus: { name: '🇧🇾 Belarus', text: '🇧🇾 Belarus', letterSpacing: 0, align: 'left', bgColor: '#641313' },
-    belgium: { name: '🇧🇪 Belgium', text: '🇧🇪 Belgium', letterSpacing: 0, align: 'left', bgColor: '#c4ba00' },
-    bosnia: { name: '🇧🇦 Bosnia & Herzegovina', text: '🇧🇦 Bosnia & Herzegovina', letterSpacing: 0, align: 'left', bgColor: '#003aa6' },
-    bulgaria: { name: '🇧🇬 Bulgaria', text: '🇧🇬 Bulgaria', letterSpacing: 0, align: 'left', bgColor: '#00b960' },
-    canada: { name: '🇨🇦 Canada', text: '🇨🇦 Canada', letterSpacing: 0, align: 'left', bgColor: '#a40000' },
-    croatia: { name: '🇭🇷 Croatia', text: '🇭🇷 Croatia', letterSpacing: 0, align: 'left', bgColor: '#d20025' },
-    cyprus: { name: '🇨🇾 Cyprus', text: '🇨🇾 Cyprus', letterSpacing: 0, align: 'left', bgColor: '#b78900' },
-    czechia: { name: '🇨🇿 Czechia', text: '🇨🇿 Czechia', letterSpacing: 0, align: 'left', bgColor: '#000971' },
-    denmark: { name: '🇩🇰 Denmark', text: '🇩🇰 Denmark', letterSpacing: 0, align: 'left', bgColor: '#b90004'},
-    estonia: { name: '🇪🇪 Estonia', text: '🇪🇪 Estonia', letterSpacing: 0, align: 'left', bgColor: '#0056e6'},
-    finland: { name: '🇫🇮 Finland', text: '🇫🇮 Finland', letterSpacing: 0, align: 'left', bgColor: '#0030f2'},
-    france: { name: '🇫🇷 France', text: '🇫🇷 France', letterSpacing: 0, align: 'left', bgColor: '#0013a4'},
-    georgia: { name: '🇬🇪 Georgia', text: '🇬🇪 Georgia', letterSpacing: 0, align: 'left', bgColor: '#9d0000'},
-    germany: { name: '🇩🇪 Germany', text: '🇩🇪 Germany', letterSpacing: 0, align: 'left', bgColor: '#d56300'},
-    greece: { name: '🇬🇷 Greece', text: '🇬🇷 Greece', letterSpacing: 0, align: 'left', bgColor: '#0062ca'},
-    hungary: { name: '🇭🇺 Hungary', text: '🇭🇺 Hungary', letterSpacing: 0, align: 'left', bgColor: '#00640f'},
-    iceland: { name: '🇮🇸 Iceland', text: '🇮🇸 Iceland', letterSpacing: 0, align: 'left', bgColor: '#001d91'},
-    ireland: { name: '🇮🇪 Ireland', text: '🇮🇪 Ireland', letterSpacing: 0, align: 'left', bgColor: '#00970d'},
-    israel: { name: '🇮🇱 Israel', text: '🇮🇱 Israel', letterSpacing: 0, align: 'left', bgColor: '#0060bf'},
-    italy: { name: '🇮🇹 Italy', text: '🇮🇹 Italy', letterSpacing: 0, align: 'left', bgColor: '#009507'},
-    kazakhstan: { name: '🇰🇿 Kazakhstan', text: '🇰🇿 Kazakhstan', letterSpacing: 0, align: 'left', bgColor: '#009f9f'},
-    kosovo: { name: '🇽🇰 Kosovo', text: '🇽🇰 Kosovo', letterSpacing: 0, align: 'left', bgColor: '#000fe8'},
-    latvia: { name: '🇱🇻 Latvia', text: '🇱🇻 Latvia', letterSpacing: 0, align: 'left', bgColor: '#400000'},
-    lithuania: { name: '🇱🇹 Lithuania', text: '🇱🇹 Lithuania', letterSpacing: 0, align: 'left', bgColor: '#bf8f00'},
-    luxembourg: { name: '🇱🇺 Luxembourg', text: '🇱🇺 Luxembourg', letterSpacing: 0, align: 'left', bgColor: '#00bde8'},
-    malta: { name: '🇲🇹 Malta', text: '🇲🇹 Malta', letterSpacing: 0, align: 'left', bgColor: '#8a0000'},
-    moldova: { name: '🇲🇩 Moldova', text: '🇲🇩 Moldova', letterSpacing: 0, align: 'left', bgColor: '#a68500'},
-    monaco: { name: '🇲🇨 Monaco', text: '🇲🇨 Monaco', letterSpacing: 0, align: 'left', bgColor: '#950000'},
-    montenegro: { name: '🇲🇪 Montenegro', text: '🇲🇪 Montenegro', letterSpacing: 0, align: 'left', bgColor: '#aa5500'},
-    morocco: { name: '🇲🇦 Morocco', text: '🇲🇦 Morocco', letterSpacing: 0, align: 'left', bgColor: '#6d1818'},
-    netherlands: { name: '🇳🇱 Netherlands', text: '🇳🇱 Netherlands', letterSpacing: 0, align: 'left', bgColor: '#00209d'},
-    northmacedonia: { name: '🇲🇰 North Macedonia', text: '🇲🇰 North Macedonia', letterSpacing: 0, align: 'left', bgColor: '#ae4600'},
-    norway: { name: '🇳🇴 Norway', text: '🇳🇴 Norway', letterSpacing: 0, align: 'left', bgColor: '#aa0000'},
-    poland: { name: '🇵🇱 Poland', text: '🇵🇱 Poland', letterSpacing: 0, align: 'left', bgColor: '#a80022'},
-    portugal: { name: '🇵🇹 Portugal', text: '🇵🇹 Portugal', letterSpacing: 0, align: 'left', bgColor: '#007103'},
-    romania: { name: '🇷🇴 Romania', text: '🇷🇴 Romania', letterSpacing: 0, align: 'left', bgColor: '#000291'},
-    russia: { name: '🇷🇺 Russia', text: '🇷🇺 Russia', letterSpacing: 0, align: 'left', bgColor: '#000f85'},
-    sanmarino: { name: '🇸🇲 San Marino', text: '🇸🇲 San Marino', letterSpacing: 0, align: 'left', bgColor: '#0083ae'},
-    serbia: { name: '🇷🇸 Serbia', text: '🇷🇸 Serbia', letterSpacing: 0, align: 'left', bgColor: '#001c9d'},
-    slovakia: { name: '🇸🇰 Slovakia', text: '🇸🇰 Slovakia', letterSpacing: 0, align: 'left', bgColor: '#0c0091'},
-    slovenia: { name: '🇸🇮 Slovenia', text: '🇸🇮 Slovenia', letterSpacing: 0, align: 'left', bgColor: '#0028b9'},
-    spain: { name: '🇪🇸 Spain', text: '🇪🇸 Spain', letterSpacing: 0, align: 'left', bgColor: '#ae8300'},
-    sweden: { name: '🇸🇪 Sweden', text: '🇸🇪 Sweden', letterSpacing: 0, align: 'left', bgColor: '#005b9f'},
-    switzerland: { name: '🇨🇭 Switzerland', text: '🇨🇭 Switzerland', letterSpacing: 0, align: 'left', bgColor: '#c40000'},
-    turkiye: { name: '🇹🇷 Türkiye', text: '🇹🇷 Türkiye', letterSpacing: 0, align: 'left', bgColor: '#a71f1f'},
-    ukraine: { name: '🇺🇦 Ukraine', text: '🇺🇦 Ukraine', letterSpacing: 0, align: 'left', bgColor: '#d5ce00'},
-    uk: { name: '🇬🇧 United Kingdom', text: '🇬🇧 United Kingdom', letterSpacing: 0, align: 'left', bgColor: '#0000ae'},
-    // Eurovision Asia countries (alphabetically sorted)
-    bangladesh: { name: '🇧🇩 Bangladesh', text: '🇧🇩 Bangladesh', letterSpacing: 0, align: 'left', bgColor: '#006a4e' },
-    bhutan: { name: '🇧🇹 Bhutan', text: '🇧🇹 Bhutan', letterSpacing: 0, align: 'left', bgColor: '#e47c1a' },
-    cambodia: { name: '🇰🇭 Cambodia', text: '🇰🇭 Cambodia', letterSpacing: 0, align: 'left', bgColor: '#032ea1' },
-    laos: { name: '🇱🇦 Laos', text: '🇱🇦 Laos', letterSpacing: 0, align: 'left', bgColor: '#ce1126' },
-    malaysia: { name: '🇲🇾 Malaysia', text: '🇲🇾 Malaysia', letterSpacing: 0, align: 'left', bgColor: '#cc0001' },
-    nepal: { name: '🇳🇵 Nepal', text: '🇳🇵 Nepal', letterSpacing: 0, align: 'left', bgColor: '#003893' },
-    philippines: { name: '🇵🇭 Philippines', text: '🇵🇭 Philippines', letterSpacing: 0, align: 'left', bgColor: '#0038a8' },
-    southkorea: { name: '🇰🇷 South Korea', text: '🇰🇷 South Korea', letterSpacing: 0, align: 'left', bgColor: '#003478' },
-    thailand: { name: '🇹🇭 Thailand', text: '🇹🇭 Thailand', letterSpacing: 0, align: 'left', bgColor: '#a51931' },
-    vietnam: { name: '🇻🇳 Vietnam', text: '🇻🇳 Vietnam', letterSpacing: 0, align: 'left', bgColor: '#da251d' },
-};
-
-// ISO 3166-1 alpha-2 → BANNER_PRESETS key
-const FLAG_TO_PRESET = {
-    AL:'albania', AD:'andorra', AM:'armenia', AU:'australia', AT:'austria',
-    AZ:'azerbaijan', BY:'belarus', BE:'belgium', BA:'bosnia', BG:'bulgaria',
-    CA:'canada', HR:'croatia', CY:'cyprus', CZ:'czechia', DK:'denmark',
-    EE:'estonia', FI:'finland', FR:'france', GE:'georgia', DE:'germany',
-    GR:'greece', HU:'hungary', IS:'iceland', IE:'ireland', IL:'israel',
-    IT:'italy', KZ:'kazakhstan', XK:'kosovo', LV:'latvia', LT:'lithuania',
-    LU:'luxembourg', MT:'malta', MD:'moldova', MC:'monaco', ME:'montenegro',
-    MA:'morocco', NL:'netherlands', MK:'northmacedonia', NO:'norway',
-    PL:'poland', PT:'portugal', RO:'romania', RU:'russia', SM:'sanmarino',
-    RS:'serbia', SK:'slovakia', SI:'slovenia', ES:'spain', SE:'sweden',
-    CH:'switzerland', TR:'turkiye', UA:'ukraine', GB:'uk',
-    BD:'bangladesh', BT:'bhutan', KH:'cambodia', LA:'laos', MY:'malaysia',
-    NP:'nepal', PH:'philippines', KR:'southkorea', TH:'thailand', VN:'vietnam',
-};
+import { findPresetForText, groupPresets } from './utils/bannerPresets';
+import useSharedBannerPresets from './utils/useSharedBannerPresets';
+import BannerPresetManager from './components/BannerPresetManager';
 
 const CORS_PROXY = 'https://escdiscord-cors-proxy.100gradifrnht.workers.dev';
 
@@ -179,6 +94,11 @@ export default function App() {
             const [bannerOpacity, setBannerOpacity] = useState(0.6);
             const [selectedBannerPreset, setSelectedBannerPreset] = useState('custom');
             const [showBanner, setShowBanner] = useState(true);
+            const {
+                presets: bannerPresets, updatePresets: updateBannerPresets,
+                status: presetSyncStatus, refresh: refreshBannerPresets, retry: retryPresetSync,
+            } = useSharedBannerPresets();
+            const [showPresetManager, setShowPresetManager] = useState(false);
             const [photoCredit, setPhotoCredit] = useState('');
 
             // Bluesky import
@@ -576,18 +496,7 @@ export default function App() {
                 }
                 // Auto-set banner preset from first emoji of first post
                 if (data.posts.length > 0) {
-                    const chars = [...data.posts[0].text];
-                    const cp0 = chars[0]?.codePointAt(0);
-                    const cp1 = chars[1]?.codePointAt(0);
-                    const isRI = cp => cp >= 0x1F1E6 && cp <= 0x1F1FF;
-                    if (cp0 === 0x1F534) { // 🔴
-                        handleBannerPresetChange('breaking');
-                    } else if (isRI(cp0) && isRI(cp1)) {
-                        const isoCode = String.fromCharCode(cp0 - 0x1F1E6 + 65) + String.fromCharCode(cp1 - 0x1F1E6 + 65);
-                        handleBannerPresetChange(FLAG_TO_PRESET[isoCode] || 'custom');
-                    } else {
-                        handleBannerPresetChange('custom');
-                    }
+                    handleBannerPresetChange(findPresetForText(bannerPresets, data.posts[0].text)?.id ?? 'custom');
                 }
 
                 // Create one textbox per post
@@ -697,16 +606,31 @@ export default function App() {
                 });
             };
 
-            const handleBannerPresetChange = (presetKey) => {
-                setSelectedBannerPreset(presetKey);
-                const preset = BANNER_PRESETS[presetKey];
-                if (preset) {
-                    setBannerText(preset.text);
-                    setBannerLetterSpacing(preset.letterSpacing);
-                    setBannerTextAlign(preset.align);
-                    setBannerColor(preset.bgColor);
-                }
+            const applyBannerPreset = (preset) => {
+                setBannerText(preset.text);
+                setBannerLetterSpacing(preset.letterSpacing);
+                setBannerTextAlign(preset.align);
+                setBannerColor(preset.bgColor);
             };
+
+            const handleBannerPresetChange = (presetKey, presets = bannerPresets) => {
+                setSelectedBannerPreset(presetKey);
+                const preset = presets.find(p => p.id === presetKey);
+                if (preset) applyBannerPreset(preset);
+            };
+
+            // Changes to the preset in use (local edits or another user's) are reflected on the canvas immediately
+            const prevBannerPresetsRef = useRef(bannerPresets);
+            useEffect(() => {
+                const prev = prevBannerPresetsRef.current.find(p => p.id === selectedBannerPreset);
+                prevBannerPresetsRef.current = bannerPresets;
+                const updated = bannerPresets.find(p => p.id === selectedBannerPreset);
+                if (!updated) {
+                    setSelectedBannerPreset('custom');
+                } else if (selectedBannerPreset !== 'custom' && prev && JSON.stringify(updated) !== JSON.stringify(prev)) {
+                    applyBannerPreset(updated);
+                }
+            }, [bannerPresets]);
 
             const getTouchDistance = (touches) => {
                 const dx = touches[0].clientX - touches[1].clientX;
@@ -2472,81 +2396,27 @@ export default function App() {
                                         <div className="space-y-3">
                                                 {/* Banner Preset */}
                                                 <div>
-                                                    <label className="text-xs text-gray-300 mb-1 block">Preset</label>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <label className="text-xs text-gray-300 block">Preset</label>
+                                                        <button
+                                                            onClick={() => {
+                                                                refreshBannerPresets();
+                                                                setShowPresetManager(true);
+                                                            }}
+                                                            className="text-xs text-blue-300 hover:text-blue-200"
+                                                        >
+                                                            Manage presets
+                                                        </button>
+                                                    </div>
                                                     <select
-                                                        value={selectedBannerPreset}
+                                                        value={bannerPresets.some(p => p.id === selectedBannerPreset) ? selectedBannerPreset : 'custom'}
                                                         onChange={(e) => handleBannerPresetChange(e.target.value)}
                                                         className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
                                                     >
-                                                        <option value="breaking">🔴 Breaking</option>
-                                                        <option value="custom">Custom</option>
-                                                        <optgroup label="Eurovision">
-                                                            <option value="albania">🇦🇱 Albania</option>
-                                                            <option value="andorra">🇦🇩 Andorra</option>
-                                                            <option value="armenia">🇦🇲 Armenia</option>
-                                                            <option value="australia">🇦🇺 Australia</option>
-                                                            <option value="austria">🇦🇹 Austria</option>
-                                                            <option value="azerbaijan">🇦🇿 Azerbaijan</option>
-                                                            <option value="belarus">🇧🇾 Belarus</option>
-                                                            <option value="belgium">🇧🇪 Belgium</option>
-                                                            <option value="bosnia">🇧🇦 Bosnia & Herzegovina</option>
-                                                            <option value="bulgaria">🇧🇬 Bulgaria</option>
-                                                            <option value="canada">🇨🇦 Canada</option>
-                                                            <option value="croatia">🇭🇷 Croatia</option>
-                                                            <option value="cyprus">🇨🇾 Cyprus</option>
-                                                            <option value="czechia">🇨🇿 Czechia</option>
-                                                            <option value="denmark">🇩🇰 Denmark</option>
-                                                            <option value="estonia">🇪🇪 Estonia</option>
-                                                            <option value="finland">🇫🇮 Finland</option>
-                                                            <option value="france">🇫🇷 France</option>
-                                                            <option value="georgia">🇬🇪 Georgia</option>
-                                                            <option value="germany">🇩🇪 Germany</option>
-                                                            <option value="greece">🇬🇷 Greece</option>
-                                                            <option value="hungary">🇭🇺 Hungary</option>
-                                                            <option value="iceland">🇮🇸 Iceland</option>
-                                                            <option value="ireland">🇮🇪 Ireland</option>
-                                                            <option value="israel">🇮🇱 Israel</option>
-                                                            <option value="italy">🇮🇹 Italy</option>
-                                                            <option value="kazakhstan">🇰🇿 Kazakhstan</option>
-                                                            <option value="kosovo">🇽🇰 Kosovo</option>
-                                                            <option value="latvia">🇱🇻 Latvia</option>
-                                                            <option value="lithuania">🇱🇹 Lithuania</option>
-                                                            <option value="luxembourg">🇱🇺 Luxembourg</option>
-                                                            <option value="malta">🇲🇹 Malta</option>
-                                                            <option value="moldova">🇲🇩 Moldova</option>
-                                                            <option value="monaco">🇲🇨 Monaco</option>
-                                                            <option value="montenegro">🇲🇪 Montenegro</option>
-                                                            <option value="morocco">🇲🇦 Morocco</option>
-                                                            <option value="netherlands">🇳🇱 Netherlands</option>
-                                                            <option value="northmacedonia">🇲🇰 North Macedonia</option>
-                                                            <option value="norway">🇳🇴 Norway</option>
-                                                            <option value="poland">🇵🇱 Poland</option>
-                                                            <option value="portugal">🇵🇹 Portugal</option>
-                                                            <option value="romania">🇷🇴 Romania</option>
-                                                            <option value="russia">🇷🇺 Russia</option>
-                                                            <option value="sanmarino">🇸🇲 San Marino</option>
-                                                            <option value="serbia">🇷🇸 Serbia</option>
-                                                            <option value="slovakia">🇸🇰 Slovakia</option>
-                                                            <option value="slovenia">🇸🇮 Slovenia</option>
-                                                            <option value="spain">🇪🇸 Spain</option>
-                                                            <option value="sweden">🇸🇪 Sweden</option>
-                                                            <option value="switzerland">🇨🇭 Switzerland</option>
-                                                            <option value="turkiye">🇹🇷 Türkiye</option>
-                                                            <option value="ukraine">🇺🇦 Ukraine</option>
-                                                            <option value="uk">🇬🇧 United Kingdom</option>
-                                                        </optgroup>
-                                                        <optgroup label="Eurovision Asia">
-                                                            <option value="bangladesh">🇧🇩 Bangladesh</option>
-                                                            <option value="bhutan">🇧🇹 Bhutan</option>
-                                                            <option value="cambodia">🇰🇭 Cambodia</option>
-                                                            <option value="laos">🇱🇦 Laos</option>
-                                                            <option value="malaysia">🇲🇾 Malaysia</option>
-                                                            <option value="nepal">🇳🇵 Nepal</option>
-                                                            <option value="philippines">🇵🇭 Philippines</option>
-                                                            <option value="southkorea">🇰🇷 South Korea</option>
-                                                            <option value="thailand">🇹🇭 Thailand</option>
-                                                            <option value="vietnam">🇻🇳 Vietnam</option>
-                                                        </optgroup>
+                                                        {groupPresets(bannerPresets).map(([group, items]) => {
+                                                            const options = items.map(p => <option key={p.id} value={p.id}>{p.name}</option>);
+                                                            return group ? <optgroup key={group} label={group}>{options}</optgroup> : options;
+                                                        })}
                                                     </select>
                                                 </div>
 
@@ -3268,6 +3138,17 @@ export default function App() {
                             </div>
                         </div>
                     </div>
+                    {showPresetManager && (
+                        <BannerPresetManager
+                            presets={bannerPresets}
+                            onChange={updateBannerPresets}
+                            syncStatus={presetSyncStatus}
+                            onRetrySync={retryPresetSync}
+                            onApply={(id) => handleBannerPresetChange(id)}
+                            selectedPresetId={selectedBannerPreset}
+                            onClose={() => setShowPresetManager(false)}
+                        />
+                    )}
                 </div>
             );
         }
