@@ -8,6 +8,11 @@ import { parseTextWithEmoji, loadEmojiImage } from './utils/emoji';
 import { findPresetForText, groupPresets } from './utils/bannerPresets';
 import useSharedBannerPresets from './utils/useSharedBannerPresets';
 import BannerPresetManager from './components/BannerPresetManager';
+import PostPreview from './components/PostPreview';
+import ErrorBoundary from './components/ErrorBoundary';
+import { extractMoreLink } from './utils/socialPosts';
+
+const MIN_CANVAS_HEIGHT = 320; // below this the preview gets too small to edit; the page scrolls instead
 
 const CORS_PROXY = 'https://escdiscord-cors-proxy.100gradifrnht.workers.dev';
 
@@ -99,6 +104,8 @@ export default function App() {
                 status: presetSyncStatus, refresh: refreshBannerPresets, retry: retryPresetSync,
             } = useSharedBannerPresets();
             const [showPresetManager, setShowPresetManager] = useState(false);
+            const [moreLink, setMoreLink] = useState('');
+            const [previewSlides, setPreviewSlides] = useState(null); // slide snapshots while the post preview is open
             const [photoCredit, setPhotoCredit] = useState('');
 
             // Bluesky import
@@ -143,6 +150,33 @@ export default function App() {
 
             const canvasRef = useRef(null);
             const containerRef = useRef(null);
+            const canvasCardRef = useRef(null);
+            const [viewportSize, setViewportSize] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+            const [canvasColumnChrome, setCanvasColumnChrome] = useState(230); // left column height minus the canvas
+            const [canvasColumnWidth, setCanvasColumnWidth] = useState(780); // left column content width
+
+            useEffect(() => {
+                const onResize = () => setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+                window.addEventListener('resize', onResize);
+                return () => window.removeEventListener('resize', onResize);
+            }, []);
+
+            // Re-measure whenever the column's other content changes (image controls appear, slides added, etc.).
+            // Resizing the canvas doesn't change this difference, so it settles after one pass.
+            useLayoutEffect(() => {
+                const card = canvasCardRef.current;
+                const canvasBox = containerRef.current;
+                if (!card || !canvasBox) return;
+                const measure = () => {
+                    const style = getComputedStyle(card);
+                    setCanvasColumnChrome(card.offsetHeight - canvasBox.offsetHeight);
+                    setCanvasColumnWidth(card.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight));
+                };
+                const observer = new ResizeObserver(measure);
+                observer.observe(card);
+                measure();
+                return () => observer.disconnect();
+            }, []);
 
             // Keep refs in sync with state
             useEffect(() => {
@@ -176,9 +210,16 @@ export default function App() {
             };
 
             const dimensions = ASPECT_RATIOS[aspectRatio];
-            const maxCanvasWidthByColumn = typeof window !== 'undefined' ? Math.min(window.innerWidth >= 1024 ? 780 : 600, window.innerWidth - 40) : 600;
-            // ~230px reserved for aspect buttons, slide tabs, safe-area toggle, copy/export buttons, card padding
-            const maxCanvasHeightByViewport = typeof window !== 'undefined' ? window.innerHeight - 230 : 700;
+            const isDesktop = viewportSize.width >= 1024;
+            // Desktop: the photo controls column (w-64 + gap) shares the row with the canvas once a photo is loaded
+            const maxCanvasWidthByColumn = isDesktop
+                ? canvasColumnWidth - (baseImage ? 256 + 16 : 0)
+                : Math.min(600, viewportSize.width - 40);
+            // On desktop the whole left column fits the window: the canvas gets whatever height the rest of the column
+            // (measured) leaves over. 32px = page top padding + space below the sticky card. On mobile ~230px is reserved.
+            const maxCanvasHeightByViewport = isDesktop
+                ? Math.max(MIN_CANVAS_HEIGHT, viewportSize.height - canvasColumnChrome - 32)
+                : viewportSize.height - 230;
             const maxCanvasWidthByHeight = maxCanvasHeightByViewport * (dimensions.width / dimensions.height);
             const maxCanvasWidth = Math.min(maxCanvasWidthByColumn, maxCanvasWidthByHeight);
             const scale = maxCanvasWidth / dimensions.width;
@@ -442,6 +483,9 @@ export default function App() {
                     }
 
                     if (flatPosts.length === 0) throw new Error('No posts found from this author');
+
+                    const importedMoreLink = flatPosts.map(post => extractMoreLink(post.record)).find(Boolean);
+                    if (importedMoreLink) setMoreLink(importedMoreLink);
 
                     const posts = flatPosts.map(post => {
                         const images = [];
@@ -1567,10 +1611,12 @@ export default function App() {
                 }
             };
 
-            const exportAllSlides = async () => {
+            // Renders every slide (with overlays, no safe margins) to a blob, then restores the slide being edited
+            const renderAllSlides = async (type = 'image/png', quality = 1.0) => {
                 const savedSlides = [...slides];
                 savedSlides[currentSlideIdx] = captureSlide();
                 const savedIdx = currentSlideIdx;
+                const blobs = [];
                 try {
                     for (let i = 0; i < savedSlides.length; i++) {
                         flushSync(() => {
@@ -1578,25 +1624,11 @@ export default function App() {
                             setCurrentSlideIdx(i);
                         });
                         await renderCanvasRef.current(false);
-                        const canvas = canvasRef.current;
-                        await new Promise((resolve, reject) => {
-                            canvas.toBlob(blob => {
-                                if (!blob) { reject(new Error('toBlob failed')); return; }
-                                const url = URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                link.download = `slide-${i + 1}-${Date.now()}.png`;
-                                link.href = url;
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                setTimeout(() => URL.revokeObjectURL(url), 100);
-                                resolve();
-                            }, 'image/png', 1.0);
-                        });
-                        await new Promise(r => setTimeout(r, 300));
+                        blobs.push(await new Promise((resolve, reject) => {
+                            canvasRef.current.toBlob(blob => (blob ? resolve(blob) : reject(new Error('toBlob failed'))), type, quality);
+                        }));
                     }
-                } catch (error) {
-                    alert('Export all failed: ' + error.message);
+                    return blobs;
                 } finally {
                     flushSync(() => {
                         restoreSlide(savedSlides[savedIdx]);
@@ -1604,6 +1636,31 @@ export default function App() {
                     });
                     await renderCanvasRef.current(true);
                 }
+            };
+
+            const exportAllSlides = async () => {
+                try {
+                    const blobs = await renderAllSlides();
+                    for (let i = 0; i < blobs.length; i++) {
+                        const url = URL.createObjectURL(blobs[i]);
+                        const link = document.createElement('a');
+                        link.download = `slide-${i + 1}-${Date.now()}.png`;
+                        link.href = url;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        setTimeout(() => URL.revokeObjectURL(url), 100);
+                        await new Promise(r => setTimeout(r, 300));
+                    }
+                } catch (error) {
+                    alert('Export all failed: ' + error.message);
+                }
+            };
+
+            const openPostPreview = () => {
+                const snapshot = [...slides];
+                snapshot[currentSlideIdx] = captureSlide();
+                setPreviewSlides(snapshot);
             };
 
             const copyImage = async () => {
@@ -1678,7 +1735,7 @@ export default function App() {
                         <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:px-4">
                             {/* Canvas - Always visible */}
                             <div className="lg:col-span-2 canvas-wrapper">
-                                <div className="bg-gray-800 rounded-lg shadow-lg p-2 md:p-4 mx-2 md:mx-0 lg:sticky lg:top-4">
+                                <div ref={canvasCardRef} className="bg-gray-800 rounded-lg shadow-lg p-2 md:p-4 mx-2 md:mx-0 lg:sticky lg:top-4">
                                     <div className="mb-3 flex flex-wrap items-center gap-1 md:gap-2">
                                         <span className="text-sm text-gray-400 mr-1">Aspect ratio</span>
                                         {Object.entries(ASPECT_RATIOS).map(([key, value]) => (
@@ -1741,9 +1798,11 @@ export default function App() {
                                         </label>
                                     </div>
 
+                                    {/* Desktop: photo controls sit beside the canvas so the column fits the window height */}
+                                    <div className="lg:flex lg:items-start lg:justify-center lg:gap-4">
                                     <div
                                         ref={containerRef}
-                                        className="canvas-container relative mx-auto bg-gray-600 rounded-lg overflow-hidden"
+                                        className="canvas-container relative mx-auto lg:mx-0 lg:flex-shrink-0 bg-gray-600 rounded-lg overflow-hidden"
                                         style={{
                                             width: maxCanvasWidth,
                                             height: canvasHeight,
@@ -1764,7 +1823,7 @@ export default function App() {
                                     </div>
 
                                     {baseImage && (
-                                        <div className="mt-3 md:mt-4 space-y-3">
+                                        <div className="mt-3 md:mt-4 space-y-3 lg:mt-0 lg:w-64 lg:flex-shrink-0">
                                             {/* Quick fit buttons */}
                                             <div className="flex gap-2 pb-2 border-b border-gray-600">
                                                 <button
@@ -1951,8 +2010,16 @@ export default function App() {
                                             </div>
                                         </div>
                                     )}
+                                    </div>
 
-                                    <div className={`grid gap-2 mt-3 md:mt-4 ${slides.length > 1 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                                    <button
+                                        onClick={openPostPreview}
+                                        className="w-full mt-3 md:mt-4 flex items-center justify-center gap-2 bg-[#d4a72c] text-gray-900 px-3 md:px-6 py-2 md:py-3 rounded-lg text-sm md:text-base font-semibold hover:bg-[#e2b93f] transition"
+                                    >
+                                        Preview posts and publish
+                                        <span className="text-xs font-medium bg-gray-900 text-[#f2cf63] px-1.5 py-0.5 rounded">Beta</span>
+                                    </button>
+                                    <div className={`grid gap-2 mt-2 ${slides.length > 1 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                                         <button
                                             onClick={copyImage}
                                             className="bg-blue-600 text-white px-3 md:px-6 py-2 md:py-3 rounded-lg text-sm md:text-base font-semibold hover:bg-blue-700 transition"
@@ -2016,7 +2083,7 @@ export default function App() {
                                 <div className="space-y-4 p-2 md:p-0 mobile-panel">
                                     {/* Import from Bluesky */}
                                     <div className="bg-gray-800 rounded-lg shadow-lg p-2">
-                                        <h2 className="text-base md:text-lg font-semibold mb-2 flex items-center gap-2">Import from Bluesky <span className="text-xs font-medium bg-yellow-900 text-yellow-300 px-1.5 py-0.5 rounded">Beta</span></h2>
+                                        <h2 className="text-base md:text-lg font-semibold mb-2">Import from Bluesky</h2>
                                         <div className="flex gap-2 mb-2">
                                             <input
                                                 type="text"
@@ -3138,6 +3205,19 @@ export default function App() {
                             </div>
                         </div>
                     </div>
+                    {previewSlides && (
+                        <ErrorBoundary onClose={() => setPreviewSlides(null)}>
+                        <PostPreview
+                            slides={previewSlides}
+                            presets={bannerPresets}
+                            aspectRatio={aspectRatio}
+                            moreLink={moreLink}
+                            onMoreLinkChange={setMoreLink}
+                            renderSlideImages={() => renderAllSlides('image/jpeg', 0.92)}
+                            onClose={() => setPreviewSlides(null)}
+                        />
+                        </ErrorBoundary>
+                    )}
                     {showPresetManager && (
                         <BannerPresetManager
                             presets={bannerPresets}

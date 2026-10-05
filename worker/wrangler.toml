@@ -6,3 +6,12 @@ compatibility_date = "2024-09-01"
 [[kv_namespaces]]
 binding = "PRESETS"
 id = "0901a482de974098a05afdec8cef271f"
+
+# Images hosted for Buffer (expire after 30 days) and per-send records that prevent double posting
+[[kv_namespaces]]
+binding = "MEDIA"
+id = "51b98267ff4249a7935f90714bb7f81a"
+
+# Secrets (set with `wrangler secret put`, never committed):
+#   BUFFER_API_KEY  – Buffer API key
+#   POST_PASSWORD   – password the app sends to post; posting is refused until it is set
