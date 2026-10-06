@@ -10,8 +10,10 @@ import useSharedBannerPresets from './utils/useSharedBannerPresets';
 import BannerPresetManager from './components/BannerPresetManager';
 import PostPreview from './components/PostPreview';
 import ErrorBoundary from './components/ErrorBoundary';
-import { extractMoreLink } from './utils/socialPosts';
+import { extractMoreLink, countX, stripMarkdown } from './utils/socialPosts';
 
+// X allows 280; the emoji (2) and space (1) added in front of each post leave 277 for the textbox itself
+const TEXTBOX_CHAR_LIMIT = 277;
 const MIN_CANVAS_HEIGHT = 320; // below this the preview gets too small to edit; the page scrolls instead
 
 const CORS_PROXY = 'https://escdiscord-cors-proxy.100gradifrnht.workers.dev';
@@ -2442,6 +2444,19 @@ export default function App() {
                                         </div>
                                     </div>
 
+                                    {/* Photo Credit */}
+                                    <div className={`${activeTab === 'text' || activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-gray-800 rounded-lg shadow-lg p-2`}>
+                                        <h2 className="text-base md:text-lg font-semibold mb-2">Photo Credit</h2>
+                                        <input
+                                            type="text"
+                                            value={photoCredit}
+                                            onChange={(e) => setPhotoCredit(e.target.value)}
+                                            placeholder="e.g. © Corinne Cumming / EBU"
+                                            className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
+                                        />
+                                        <p className="text-xs text-gray-400 mt-1">Rendered vertically along the left edge at 50% opacity</p>
+                                    </div>
+
                                     {/* Tag Banner Controls */}
                                     <div className={`${activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-gray-800 rounded-lg shadow-lg p-2`}>
                                         <div className="flex items-center justify-between mb-2">
@@ -2688,19 +2703,6 @@ export default function App() {
                                             </div>
                                     </div>
 
-                                    {/* Photo Credit */}
-                                    <div className={`${activeTab === 'text' || activeTab === 'overlays' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-gray-800 rounded-lg shadow-lg p-2`}>
-                                        <h2 className="text-base md:text-lg font-semibold mb-2">Photo Credit</h2>
-                                        <input
-                                            type="text"
-                                            value={photoCredit}
-                                            onChange={(e) => setPhotoCredit(e.target.value)}
-                                            placeholder="e.g. © Corinne Cumming / EBU"
-                                            className="w-full p-2 border border-gray-600 rounded text-xs md:text-sm"
-                                        />
-                                        <p className="text-xs text-gray-400 mt-1">Rendered vertically along the left edge at 50% opacity</p>
-                                    </div>
-
                                     {/* Text Controls - Desktop: always show, Mobile: show in 'text' tab */}
                                     <div className={`${activeTab === 'text' || window.innerWidth >= 1024 ? 'block' : 'hidden'} lg:block bg-gray-800 rounded-lg shadow-lg p-2`}>
                                         <h2 className="text-base md:text-lg font-semibold mb-2">Text</h2>
@@ -2768,9 +2770,20 @@ export default function App() {
                                                         value={el.text}
                                                         onChange={(e) => updateTextElement(el.id, { text: e.target.value })}
                                                         onFocus={() => setFocusedTextboxId(el.id)}
-                                                        className={`w-full p-2 border rounded mb-2 text-xs md:text-sm resize-none overflow-hidden ${focusedTextboxId === el.id ? 'border-blue-400' : 'border-gray-600'}`}
+                                                        className={`w-full p-2 border rounded text-xs md:text-sm resize-none overflow-hidden ${focusedTextboxId === el.id ? 'border-blue-400' : 'border-gray-600'}`}
                                                         rows={Math.max(3, el.text.split('\n').length + Math.ceil(el.text.length / 60))}
                                                     />
+                                                    {(() => {
+                                                        // Counted the way X counts the posted text (markdown stars removed)
+                                                        const count = countX(stripMarkdown(el.text).trim());
+                                                        const over = count > TEXTBOX_CHAR_LIMIT;
+                                                        return (
+                                                            <div className={`text-right text-[11px] tabular-nums mb-2 ${over ? 'text-red-400 font-semibold' : 'text-gray-400'}`}>
+                                                                {count}/{TEXTBOX_CHAR_LIMIT}
+                                                                {over && ' · too long for one post'}
+                                                            </div>
+                                                        );
+                                                    })()}
 
                                                     {/* Custom settings checkbox */}
                                                     <label className="flex items-center space-x-2 mb-2 cursor-pointer">
