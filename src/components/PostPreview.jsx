@@ -55,6 +55,12 @@ export default function PostPreview({ slides, presets, aspectRatio, moreLink, on
     const [carousel, setCarousel] = useState({ status: 'loading', urls: [] });
     const [mobileTab, setMobileTab] = useState('thread');
     const [sendState, setSendState] = useState({ busy: false, locked: false });
+    const [removed, setRemoved] = useState(() => new Set()); // thread slots the user removed (undoable)
+    const toggleRemoved = (idx) => setRemoved(prev => {
+        const next = new Set(prev);
+        if (next.has(idx)) next.delete(idx); else next.add(idx);
+        return next;
+    });
     // Platforms to post to; every preview starts with all of them so a skipped one is never carried over
     const [selected, setSelected] = useState(() => PLATFORMS.map(p => p.id));
     const toggleService = (id) => setSelected(prev => (prev.includes(id) ? prev.filter(s => s !== id) : PLATFORMS.map(p => p.id).filter(s => s === id || prev.includes(s))));
@@ -100,9 +106,16 @@ export default function PostPreview({ slides, presets, aspectRatio, moreLink, on
     uploadsRef.current = uploads;
     useEffect(() => () => uploadsRef.current.forEach(u => URL.revokeObjectURL(u.src)), []);
 
-    const allPosts = buildThreadPosts(slides, emojis, moreLink).map((p, i) => ({ ...p, images: postImages[i] }));
-    const posts = allPosts.filter(p => !p.omitted); // what actually gets sent
+    // Every thread slot keeps its index (idx) into postImages. Posts the user removed, and posts left with no text
+    // and no images, are shown in the list but never sent: Buffer rejects empty thread items.
+    const allPosts = buildThreadPosts(slides, emojis, moreLink).map((p, idx) => ({ ...p, idx, images: postImages[idx] }));
+    const entries = allPosts
+        .filter(p => !p.omitted)
+        .map(p => ({ ...p, removed: removed.has(p.idx), empty: !p.text.trim() && p.images.length === 0 }));
+    const posts = entries.filter(p => !p.removed && !p.empty); // what actually gets sent
+    const sentNumber = new Map(posts.map((p, n) => [p.idx, n + 1]));
     const moreSlot = allPosts.find(p => p.omitted);
+    const activeIdx = entries.filter(p => !p.removed).map(p => p.idx); // slots that can hold images
     const caption = buildCaption(slides, emojis[0]);
     const library = [...collectImageLibrary(slides), ...uploads];
     const multiEmoji = slides.length > 1;
@@ -114,6 +127,7 @@ export default function PostPreview({ slides, presets, aspectRatio, moreLink, on
         if (countX(p.text) > LIMITS.x) issue(`Post ${i + 1} is too long for X`, 'twitter');
         if (countBluesky(p.text) > LIMITS.bluesky) issue(`Post ${i + 1} is too long for Bluesky`, 'bluesky');
     });
+    if (posts.length === 0) issue('The X / Bluesky thread is empty: add text or an image to at least one post', 'twitter', 'bluesky');
     if (moreLink.trim() && !/^https?:\/\/\S+\.\S+/.test(moreLink.trim())) issue('The More link should be a full URL starting with https://', 'twitter', 'bluesky');
     if (!caption) issue('The Instagram caption is empty', 'instagram');
     if (countInstagram(caption) > LIMITS.instagram) issue('The Instagram caption is too long', 'instagram');
@@ -124,9 +138,12 @@ export default function PostPreview({ slides, presets, aspectRatio, moreLink, on
 
     const updateImages = (postIdx, fn) => setPostImages(prev => prev.map((imgs, i) => (i === postIdx ? fn(imgs) : imgs)));
 
+    // The neighbouring slot an image moves to, skipping removed posts; null at either end
+    const neighbour = (postIdx, delta) => activeIdx[activeIdx.indexOf(postIdx) + delta] ?? null;
+
     const moveImage = (postIdx, imgIdx, delta) => {
-        const target = postIdx + delta;
-        if (target < 0 || target >= postImages.length || postImages[target].length >= MAX_IMAGES_PER_POST) return;
+        const target = neighbour(postIdx, delta);
+        if (target === null || postImages[target].length >= MAX_IMAGES_PER_POST) return;
         setPostImages(prev => {
             const next = prev.map(imgs => [...imgs]);
             const [img] = next[postIdx].splice(imgIdx, 1);
@@ -231,22 +248,41 @@ export default function PostPreview({ slides, presets, aspectRatio, moreLink, on
                             <CopyButton text={threadText} label="Copy all" />
                         </div>
                         <ol className="space-y-3">
-                            {posts.map((post, i) => (
-                                <li key={i} className="bg-gray-900/60 rounded-lg p-3 relative">
-                                    {i < posts.length - 1 && <span className="absolute left-5 top-full h-3 w-px bg-gray-600" aria-hidden />}
+                            {entries.map((post, n) => {
+                                const i = post.idx;
+                                if (post.removed) {
+                                    return (
+                                        <li key={i} className="rounded-lg border border-dashed border-gray-700 px-3 py-2 flex items-center justify-between gap-2 text-xs text-gray-500">
+                                            <span className="truncate">Removed: {post.text || `${post.images.length} image(s)`}</span>
+                                            {!locked && <button onClick={() => toggleRemoved(i)} className="text-blue-300 hover:text-blue-200 flex-shrink-0">Undo</button>}
+                                        </li>
+                                    );
+                                }
+                                const prevSlot = neighbour(i, -1);
+                                const nextSlot = neighbour(i, 1);
+                                return (
+                                <li key={i} className={`rounded-lg p-3 relative ${post.empty ? 'border border-dashed border-gray-600' : 'bg-gray-900/60'}`}>
+                                    {n < entries.length - 1 && <span className="absolute left-5 top-full h-3 w-px bg-gray-600" aria-hidden />}
                                     <div className="flex items-center justify-between gap-2 mb-1">
                                         <span className="text-[11px] text-gray-400">
-                                            {i + 1}/{posts.length}
+                                            {post.empty ? 'Empty' : `${sentNumber.get(i)}/${posts.length}`}
                                             {post.slideIdx !== null && multiEmoji && ` · slide ${post.slideIdx + 1}`}
                                         </span>
                                         <div className="flex items-center gap-2">
-                                            {isOn('twitter') && <Counter label="X" count={countX(post.text)} limit={LIMITS.x} />}
-                                            {isOn('bluesky') && <Counter label="Bsky" count={countBluesky(post.text)} limit={LIMITS.bluesky} />}
-                                            <CopyButton text={post.text} />
+                                            {!post.empty && isOn('twitter') && <Counter label="X" count={countX(post.text)} limit={LIMITS.x} />}
+                                            {!post.empty && isOn('bluesky') && <Counter label="Bsky" count={countBluesky(post.text)} limit={LIMITS.bluesky} />}
+                                            {!post.empty && <CopyButton text={post.text} />}
+                                            {!locked && (
+                                                <button onClick={() => toggleRemoved(i)} className={smallButton} title="Remove this post from the thread" aria-label="Remove post">
+                                                    Remove
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                     <p className="text-sm whitespace-pre-wrap break-words">
-                                        {post.text || <span className="text-gray-500">(image only)</span>}
+                                        {post.empty
+                                            ? <span className="text-amber-300 text-xs">Empty: won’t be posted. Add an image, or remove it.</span>
+                                            : post.text || <span className="text-gray-500">(image only)</span>}
                                     </p>
 
                                     {/* Images */}
@@ -258,8 +294,8 @@ export default function PostPreview({ slides, presets, aspectRatio, moreLink, on
                                                     <figcaption className="absolute inset-x-0 bottom-0 flex justify-between items-center gap-1 bg-black/70 px-1 py-0.5">
                                                         <span className="text-[10px] truncate text-gray-300">{img.label}</span>
                                                         <span className="flex gap-0.5 flex-shrink-0">
-                                                            <button onClick={() => moveImage(i, j, -1)} disabled={locked || i === 0 || postImages[i - 1]?.length >= MAX_IMAGES_PER_POST} className={smallButton} title="Move to previous post" aria-label="Move to previous post">↑</button>
-                                                            <button onClick={() => moveImage(i, j, 1)} disabled={locked || i === posts.length - 1 || postImages[i + 1]?.length >= MAX_IMAGES_PER_POST} className={smallButton} title="Move to next post" aria-label="Move to next post">↓</button>
+                                                            <button onClick={() => moveImage(i, j, -1)} disabled={locked || prevSlot === null || postImages[prevSlot].length >= MAX_IMAGES_PER_POST} className={smallButton} title="Move to previous post" aria-label="Move to previous post">↑</button>
+                                                            <button onClick={() => moveImage(i, j, 1)} disabled={locked || nextSlot === null || postImages[nextSlot].length >= MAX_IMAGES_PER_POST} className={smallButton} title="Move to next post" aria-label="Move to next post">↓</button>
                                                             <button onClick={() => updateImages(i, imgs => imgs.filter((_, k) => k !== j))} disabled={locked} className={smallButton} title="Remove" aria-label="Remove image">×</button>
                                                         </span>
                                                     </figcaption>
@@ -300,7 +336,8 @@ export default function PostPreview({ slides, presets, aspectRatio, moreLink, on
                                         </div>
                                     )}
                                 </li>
-                            ))}
+                                );
+                            })}
                         </ol>
                         {moreSlot && (
                             <div className="mt-3 rounded-lg border border-dashed border-gray-600 p-3 text-xs text-gray-400">

@@ -88,6 +88,9 @@ function validateSend(body) {
   if (body.services.some(s => s !== 'instagram')) {
     if (!Array.isArray(body.thread) || !body.thread.length) return 'Missing thread';
     if (body.thread.some(p => typeof p.text !== 'string' || !isUrlList(p.images) || p.images.length > 4)) return 'Invalid thread post';
+    // Buffer rejects empty thread items; never forward one
+    const emptyAt = body.thread.findIndex(p => !p.text.trim() && !p.images.length);
+    if (emptyAt !== -1) return `Thread post ${emptyAt + 1} is empty: it needs text or an image`;
   }
   if (body.services.includes('instagram')) {
     const ig = body.instagram;
